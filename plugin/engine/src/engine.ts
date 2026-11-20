@@ -8,7 +8,7 @@ import { sessionsRoot, syncActivity, type SessionUpdate } from "./activity";
 import { archiveOld } from "./archive";
 import { KeychainStore, type SecretStore } from "./secrets";
 import { keysOf } from "./keys";
-import { SlackPlugin, SLACK_COOKIE_D } from "./slack/plugin";
+import { SlackPlugin, SLACK_COOKIE_D, type SlackAttribution } from "./slack/plugin";
 import type { InboundMessage } from "./slack/types";
 import { GitHubSource, findGh, ghRunner } from "./sources/github";
 import { JiraSource, acliRunner, findAcli } from "./sources/jira";
@@ -56,10 +56,32 @@ export function hubDown(alive: { at?: string; stopped?: boolean }, now: number):
 }
 
 // 消息开头是不是 chief 的标识（去掉 Markdown 的 _ * 再比）。
+// 以前署名写在正文第一行，现在放在正文上方的署名行里；留着它认出以前发的（引擎重启后补收私信时会再看到）。
 export function startsWithSignature(text: string, signature: string): boolean {
   const bare = (t: string) => t.replace(/[*_~`]/g, "").replace(/\s+/g, " ").trim();
   const sign = bare(signature);
   return sign !== "" && bare(text).startsWith(sign);
+}
+
+// 替你发到 Slack 的话正文上方那行灰色小字：「🤖 <署名> · confirmed by @你」。
+// 你点了发送的写 confirmed by；规矩允许直接发的（没经你看）写 sent for … · not reviewed，不冒充你确认过。署名为空就不加。
+// 署名是你自己设的，仍按 mrkdwn 转义 & < >，免得写成 @某人、@channel 之类真的去提醒人。
+export function signatureAttribution(signature: string, by: Reply["by"]): SlackAttribution {
+  const sign = signature.replace(/\s+/g, " ").trim().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  if (sign === "") return false;
+  return by === "you"
+    ? { text: `${sign} · confirmed by {self}`, review: "confirmed" }
+    : { text: `${sign} · sent for {self} · not reviewed`, review: "unconfirmed" };
+}
+
+// 这条 Slack 消息是不是 chief（或别的 agent）替你发的，不是新消息：
+// - 记下的发出编号（存在 state.json，重启后补推的也认得）；
+// - 你自己账号发的、正文上方带 agent 署名行的（现在的发法；署名行谁都能写，所以只认你自己账号发的，别人的照常收）；
+// - 正文开头是署名的（以前的发法；Slack 回传时会把 _ 换成 *，比的时候去掉这些符号）。
+export function isOwnAgentMessage(m: InboundMessage, sent: readonly string[], signature: string, selfId: string | null): boolean {
+  if (sent.includes(`${m.replyTarget.channel}:${m.replyTarget.ts}`)) return true;
+  if (m.attribution !== undefined && selfId !== null && m.sender.id === selfId) return true;
+  return startsWithSignature(m.text, signature);
 }
 
 function log(line: string): void {
@@ -312,9 +334,8 @@ export class Engine {
     await this.slack.start({
       secrets: { [SLACK_COOKIE_D]: cookie },
       deliver: async (m) => {
-        // chief 自己替你发出去的话又被 Slack 推回来了：不是新消息，跳过（不然在和自己的私信里会自己回自己）。
-        // 两道：记下的发出编号（存在 state.json，重启后补推的也认得）；开头的标识（Slack 回传时会把 _ 换成 *，比的时候去掉这些符号）。
-        if (this.state.sent.includes(`${m.replyTarget.channel}:${m.replyTarget.ts}`) || startsWithSignature(m.text, loadPolicy().signature)) {
+        // chief 自己替你发出去的话又被 Slack 推回来了：不是新消息，跳过（不然在和自己的私信里会自己回自己）。怎么认见 isOwnAgentMessage。
+        if (isOwnAgentMessage(m, this.state.sent, loadPolicy().signature, this.slack?.selfId() ?? null)) {
           if (!this.state.seen.includes(m.deliveryId)) this.state.seen.push(m.deliveryId);
           return;
         }
@@ -405,12 +426,11 @@ export class Engine {
     }
     if (r.source === "slack") {
       if (!this.slack) throw new Error("Slack 没连上（chief connect slack）");
-      const sign = loadPolicy().signature.trim();
-      // 标识放在最前面：对方一眼看出是 agent 代回的。
-      const text = sign ? `_${sign}_\n${r.body}` : r.body;
+      // 署名不进正文：放在正文上方的一行灰色小字里（Slack 的 context block），对方一眼看出是 agent 代回的。
+      const attribution = signatureAttribution(loadPolicy().signature, r.by);
       const sent = r.kind === "message"
-        ? await this.slack.sendNew(r.target.to ?? "", text, r.target.thread_ts)
-        : await this.slack.send(r.target, text, placementOf(r.target, loadPolicy().placement) === "thread");
+        ? await this.slack.sendNew(r.target.to ?? "", r.body, r.target.thread_ts, attribution)
+        : await this.slack.send(r.target, r.body, placementOf(r.target, loadPolicy().placement) === "thread", attribution);
       this.state.sent.push(sent.ref);
       this.persist();
       return { url: null };

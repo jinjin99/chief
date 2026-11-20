@@ -294,9 +294,9 @@ export function replyCard($: Engine, ui: Els, s: Snapshot, edit: Record<string, 
           </Box>
         )
         : (
-          // 按发出去的样子显示：开头的署名、分行、列表都和 Slack 上一样。
+          // 按发出去的样子显示：正文上方的署名小字、分行、列表都和 Slack 上一样。
           <Box flexDirection="column" borderStyle="round" borderColor="inactive" paddingX="md" paddingY="sm">
-            {sign !== '' && r.source === 'slack' && <Text size="footnote" italic dimColor>{sign}</Text>}
+            {sign !== '' && r.source === 'slack' && <Text size="footnote" dimColor>{sign} · confirmed by 你</Text>}
             {md(ui, body.replace(/<@([UW][A-Z0-9]+)>/g, (_, id: string) => `**@${s.people?.[id] ?? id}**`))}
           </Box>
         ))}
@@ -661,7 +661,7 @@ export function policyTab($: Engine, ui: Els, s: Snapshot, opened: string[]) {
           </Box>
         )))}
 
-      {section('sec-signature', 'Slack 回复的署名', '替你发到 Slack 的话，开头自动加这一行，让对方一眼知道是 agent 代回的；清空就不加',
+      {section('sec-signature', 'Slack 回复的署名', '替你发到 Slack 的话，正文上方加一行灰色小字「署名 · confirmed by 你」（不进正文），让对方一眼知道是 agent 代回的；清空就不加',
         'Input' in ui
           ? <ui.Input key="signature" value={p.signature ?? '🤖 agent reply'} submitLabel="存" onSubmit={(v: string) => void setSignature($, v.trim())} />
           : <Text key="sig">{p.signature ?? '🤖 agent reply'}</Text>)}

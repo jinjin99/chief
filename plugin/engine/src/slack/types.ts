@@ -35,6 +35,8 @@ export interface InboundMessage {
   sender: { id: string; name: string; bot: boolean };
   // 原文，是不可信的外部文字。
   text: string;
+  // 消息上方自称的 agent 署名行（Slack 里正文上方那行灰色小字），不在 text 里。谁都能写，不能当证据。
+  attribution?: string;
   occurredAt: string;
   // 以后回复要用的定位（Slack 是 channel、thread_ts）。
   replyTarget: Record<string, string>;

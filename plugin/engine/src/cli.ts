@@ -752,7 +752,7 @@ async function rules(args: string[]): Promise<void> {
     lines.push("", "## 回复写法（替我写的话都照这个写）", "");
     p.style.forEach((x, i) => lines.push(`${i + 1}. ${x}`));
     lines.push("", `Slack 回复放哪（对方本来在 thread 里说的总是回 thread）：${(Object.keys(p.placement) as Audience[]).map((k) => `${AUDIENCE_LABELS[k]} ${p.placement[k] === "thread" ? "回到 thread" : "直接回在对话里"}`).join("，")}。个别回复要不一样，reply add 时加 --in thread|inline。`);
-    lines.push("", `替我发到 Slack 的话，开头会自动加一行：${p.signature || "（不加）"}（你写回复时不用自己加）`);
+    lines.push("", `替我发到 Slack 的话，正文上方会自动加一行灰色小字署名：${p.signature ? `${p.signature} · confirmed by @我` : "（不加）"}（署名不在正文里，你写回复时不用自己加）`);
     lines.push("", "规矩没说到的：往保守了办，对外发的东西先给我确认。");
     process.stdout.write(`${lines.join("\n")}\n`);
     return;
@@ -898,13 +898,13 @@ async function rules(args: string[]): Promise<void> {
     process.stdout.write(`${(Object.keys(now) as Audience[]).map((k) => `${AUDIENCE_LABELS[k]}：${now[k] === "thread" ? "回到 thread" : "直接回在对话里"}`).join("；")}\n`);
     return;
   }
-  // chief rules sign（标准输入给一行标识，加在替你发到 Slack 的话最前面；空的就是不加）
+  // chief rules sign（标准输入给一行标识，显示在替你发到 Slack 的话正文上方；空的就是不加）
   if (sub === "sign") {
     const text = oneLine(await stdinText(), 80);
     updatePolicy((pp) => {
       pp.signature = text;
     });
-    process.stdout.write(text ? `Slack 回复开头会加：${text}\n` : "Slack 回复不加标识了\n");
+    process.stdout.write(text ? `Slack 回复正文上方会加：${text} · confirmed by @你\n` : "Slack 回复不加标识了\n");
     return;
   }
   // chief rules brief <场景|custom:号>（标准输入给交代的话；空的就是清掉）

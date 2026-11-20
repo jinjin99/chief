@@ -251,7 +251,7 @@ chief 发出去的回复不会再被当成新消息收回来（引擎会认出�
 ### 回复怎么发
 
 0. **先把关**：对着 `chief rules` 里的「回复写法」看一遍稿子。像报告（分小标题、贴推理过程、超过五六行、一堆数字）就收紧：保留事实和链接，删掉过程，改成同事聊天的口气，必要时用 `humanizer-zh` 过一遍。改动大的，在汇报里说一句「稿子我收紧了」。
-1. 用 Write 把回复正文写到 `~/chief/data/drafts/<N>-<当前秒数>.md`。回复放 thread 还是直接回在对话里，chief 按用户的规矩自动定（`chief rules` 里「Slack 回复放哪」）；只有特殊情况才加 `--in thread` 或 `--in inline`（比如私信里同时在聊好几件事，这条要单独放 thread 免得串话）。只写正文：Slack 回复开头的 agent 署名由 chief 发出时自动加（`chief rules` 最后写着加什么），回复也会自动回到对方那条消息的 thread 里，不用你管。
+1. 用 Write 把回复正文写到 `~/chief/data/drafts/<N>-<当前秒数>.md`。回复放 thread 还是直接回在对话里，chief 按用户的规矩自动定（`chief rules` 里「Slack 回复放哪」）；只有特殊情况才加 `--in thread` 或 `--in inline`（比如私信里同时在聊好几件事，这条要单独放 thread 免得串话）。只写正文：Slack 回复的 agent 署名由 chief 发出时自动加在正文上方的一行小字里，不进正文（`chief rules` 最后写着加什么），回复也会自动回到对方那条消息的 thread 里，不用你管。
 2. `chief reply add --event N --thing T --file <那个文件>`。它会返回回复号 R、场景 `scenario`、这个场景的回复规矩 `policy`。
 3. 判断：
    - `policy` 是 `auto`（这个场景设了直接发，或者对方在用户的白名单里，返回里会有 `"trusted": true`），并且用户写的规矩没有说这种要问（排期、承诺、拒绝等）：`chief reply queue R --policy`，跟用户说一句「按规矩 5 秒后替你回 <谁>：『正文前 40 字』，面板上能撤回」。

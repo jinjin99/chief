@@ -25,7 +25,13 @@ export interface HistoryMessageLike {
   sender: { id: string; displayName?: string; handle?: string; isBot?: boolean };
   markdown: string;
   thread: { rootTs: string } | null;
+  attribution?: { text: string };
 }
+
+// 发消息时正文上方的 agent 署名行（gabriel-slack 的 attribution，一个 context block，Slack 里显示成一行灰色小字）。
+// text 是 mrkdwn，{self} 换成发消息的人（你）；review 记进 block_id（confirmed：你确认过；unconfirmed：没经你确认）。
+// false：不加。
+export type SlackAttribution = false | { text: string; review?: "confirmed" | "unconfirmed" | "hidden" };
 
 // 插件用到的 gabriel-slack 客户端的部分。测试注入假的。
 // selfUserId / core / channels 可以没有（老的假客户端）：没有就不补收、不查频道类型。
@@ -40,7 +46,7 @@ export interface GabrielClientLike {
   onError(handler: (err: Error, evt?: unknown) => void): void;
   start(): Promise<void>;
   stop(options?: { drainMs?: number }): Promise<void>;
-  chat: { send(opts: { channel: string; markdown: string; threadTs?: string }): Promise<{ channel: string; ts: string }> };
+  chat: { send(opts: { channel: string; markdown: string; threadTs?: string; attribution?: SlackAttribution }): Promise<{ channel: string; ts: string }> };
   // 按编号查人名（查 @ 了谁用）；老的假客户端没有。
   readonly users?: { resolve(ids: string[]): Promise<Array<{ id: string; name?: string; displayName?: string; handle?: string } | null>> };
   reactions: { add(opts: { channel: string; ts: string; emoji: string }): Promise<void> };
@@ -183,8 +189,8 @@ export class SlackPlugin implements ChannelPlugin {
   }
 
   // 主动发一条新消息：to 是用户编号（U…）、邮箱、或频道编号（C… / G… / D…）。发给人就先打开和他的私信。
-  // threadTs：发到频道里某条帖子的 thread 里（别人的帖子也行）。
-  async sendNew(to: string, text: string, threadTs?: string): Promise<{ ref: string }> {
+  // threadTs：发到频道里某条帖子的 thread 里（别人的帖子也行）。attribution：正文上方的署名行（不给就不加）。
+  async sendNew(to: string, text: string, threadTs?: string, attribution: SlackAttribution = false): Promise<{ ref: string }> {
     const client = this.client;
     if (!client?.core) throw new Error("Slack 还没连上");
     let channel = to;
@@ -198,18 +204,18 @@ export class SlackPlugin implements ChannelPlugin {
       if (!opened.channel?.id) throw new Error("打不开和对方的私信");
       channel = opened.channel.id;
     }
-    const res = await client.chat.send({ channel, markdown: text, ...(threadTs ? { threadTs } : {}) });
+    const res = await client.chat.send({ channel, markdown: text, ...(threadTs ? { threadTs } : {}), attribution });
     return { ref: `${res.channel}:${res.ts}` };
   }
 
   // 在一条消息所在的线程里回一句，以你本人的身份。target 是那条消息交来时的 replyTarget；text 原样发。
-  // inThread：回到对方那条消息的 thread 里；否则直接回在对话里（放哪由引擎按规矩定）。
-  async send(target: Readonly<Record<string, string>>, text: string, inThreadOf = true): Promise<{ ref: string }> {
+  // inThread：回到对方那条消息的 thread 里；否则直接回在对话里（放哪由引擎按规矩定）。attribution：正文上方的署名行（不给就不加）。
+  async send(target: Readonly<Record<string, string>>, text: string, inThreadOf = true, attribution: SlackAttribution = false): Promise<{ ref: string }> {
     const client = this.client;
     if (!client) throw new Error("Slack 还没连上");
     const channel = target.channel!;
     const inThread = target.thread_ts ?? (inThreadOf ? target.ts : undefined);
-    const res = await client.chat.send({ channel, markdown: text, ...(inThread ? { threadTs: inThread } : {}) });
+    const res = await client.chat.send({ channel, markdown: text, ...(inThread ? { threadTs: inThread } : {}), attribution });
     return { ref: `${res.channel}:${res.ts}` };
   }
 
@@ -302,6 +308,7 @@ export class SlackPlugin implements ChannelPlugin {
             isThreadReply: false,
             isMentioningMe: false,
             eventId: `${c.id}:${m.ts}:created`,
+            ...(m.attribution?.text ? { attribution: { text: m.attribution.text } } : {}),
           });
         }
       } catch {
@@ -346,6 +353,7 @@ export class SlackPlugin implements ChannelPlugin {
         bot: m.bot,
       },
       text: m.text,
+      ...(m.attribution ? { attribution: m.attribution } : {}),
       occurredAt: new Date(Number(m.ts) * 1000).toISOString(),
       replyTarget: { channel: m.channel, ts: m.ts, ...(m.threadTs ? { thread_ts: m.threadTs } : {}) },
       ...(mentions.length > 0 ? { mentions } : {}),

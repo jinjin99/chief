@@ -462,7 +462,7 @@ export interface Policy {
   trusted: string[];
   // GitHub 上不报的机器人：注册成普通用户、名字又不带 bot 的（比如公司的 AI 代码评审），写登录名。它们的 review、评论都不算有人找你。
   bots: string[];
-  // 替你发到 Slack 的话最前面加的一行标识（让对方一眼知道是 agent 代回的）；空字符串 = 不加。
+  // 替你发到 Slack 的话正文上方那行灰色小字署名（让对方一眼知道是 agent 代回的，不进正文）；空字符串 = 不加。
   signature: string;
   // Slack 回复放在哪：按对话的种类（一对一私信 / 群聊 / 频道 / 你给自己发的）。对方本来就在 thread 里说的，总是回到那个 thread。
   placement: Record<Audience, Placement>;

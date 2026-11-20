@@ -376,7 +376,7 @@ describe("Slack 给自己发的话", () => {
 describe("Slack 署名", () => {
   it("默认加 agent 署名，能改、能清掉", () => {
     const h = home();
-    expect(chief(h, "rules")).toContain("开头会自动加一行：🤖 agent reply");
+    expect(chief(h, "rules")).toContain("正文上方会自动加一行灰色小字署名：🤖 agent reply · confirmed by @我");
     execFileSync(process.execPath, ["--import", TSX, CLI, "rules", "sign"], { env: { ...process.env, CHIEF_HOME: h }, input: "— Rikki 的助手代回" });
     expect(JSON.parse(chief(h, "rules", "json")).signature).toBe("— Rikki 的助手代回");
     execFileSync(process.execPath, ["--import", TSX, CLI, "rules", "sign"], { env: { ...process.env, CHIEF_HOME: h }, input: "" });
@@ -426,7 +426,76 @@ describe("回到别人帖子的 thread", () => {
   });
 });
 
+describe("Slack 署名放在正文上方的小字里", () => {
+  it("你点的发送写 confirmed by，规矩直接发的写 not reviewed，空的不加", async () => {
+    const { signatureAttribution } = await import("../src/engine");
+    expect(signatureAttribution("🤖 agent reply", "you")).toEqual({ text: "🤖 agent reply · confirmed by {self}", review: "confirmed" });
+    expect(signatureAttribution("🤖 agent reply", "policy")).toEqual({ text: "🤖 agent reply · sent for {self} · not reviewed", review: "unconfirmed" });
+    expect(signatureAttribution("🤖 agent reply", undefined)).toMatchObject({ review: "unconfirmed" });
+    expect(signatureAttribution("  ", "you")).toBe(false);
+    // 署名里写了 <!here>、<@U…>：转义掉，不会真的去提醒人。
+    expect(signatureAttribution("<!here> <@U0X> & 我", "you")).toEqual({ text: "&lt;!here&gt; &lt;@U0X&gt; &amp; 我 · confirmed by {self}", review: "confirmed" });
+  });
+
+  it("gabriel-slack 把它画成正文上方的 context block", async () => {
+    const { signatureAttribution } = await import("../src/engine");
+    const { renderAttribution } = await import("gabriel-slack");
+    const a = signatureAttribution("🤖 agent 加入光荣的进化吧", "you");
+    if (a === false) throw new Error("应该有署名");
+    expect(renderAttribution(a, { selfUserId: "U0ME", channel: "C0DEV" })).toEqual({
+      text: "🤖 agent 加入光荣的进化吧 · confirmed by <@U0ME>",
+      block: { type: "context", block_id: "gabriel.attribution.custom", elements: [{ type: "mrkdwn", text: "🤖 agent 加入光荣的进化吧 · confirmed by <@U0ME>" }] },
+    });
+  });
+
+  it("发的时候正文原样、署名单独给 gabriel-slack", async () => {
+    const { SlackPlugin } = await import("../src/slack/plugin");
+    const calls: unknown[] = [];
+    const fake = {
+      selfUserId: "U0ME",
+      core: { callWebApi: async (method: string) => (method === "conversations.open" ? { channel: { id: "D0NEW" } } : {}) },
+      on: () => {}, onError: () => {}, start: async () => {}, stop: async () => {},
+      chat: { send: async (opts: { channel: string }) => { calls.push(opts); return { channel: opts.channel, ts: "9.0" }; } },
+      reactions: { add: async () => {} },
+    };
+    const plugin = new SlackPlugin({ createClient: async () => fake });
+    await plugin.start({ secrets: { cookie_d: "xoxd-x" }, deliver: async () => {}, threadSeen: () => false, status: () => {}, log: () => {} });
+    const attribution = { text: "🤖 agent reply · confirmed by {self}", review: "confirmed" as const };
+    expect(await plugin.send({ channel: "C1", ts: "1.0" }, "好的，今天合", true, attribution)).toEqual({ ref: "C1:9.0" });
+    await plugin.sendNew("U0ABC", "jk 你好", undefined, attribution);
+    await plugin.send({ channel: "C1", ts: "1.0" }, "不加署名", false);
+    expect(calls).toEqual([
+      { channel: "C1", markdown: "好的，今天合", threadTs: "1.0", attribution },
+      { channel: "D0NEW", markdown: "jk 你好", attribution },
+      { channel: "C1", markdown: "不加署名", attribution: false },
+    ]);
+    await plugin.stop();
+  });
+});
+
 describe("认出 chief 自己发的", () => {
+  it("带署名行的：只认你自己账号发的；记下的编号、以前写在正文开头的也认", async () => {
+    const { isOwnAgentMessage } = await import("../src/engine");
+    const { classifyCreated } = await import("../src/slack/classify");
+    // gabriel-slack 收到时把署名行从正文里拿出来，放在 attribution 上。
+    const evt = { ts: "2.0", channel: { id: "D1", isIm: true, isMpim: false, imUserId: "UME1" }, sender: { id: "UME1", isBot: false }, origin: "self_other_client" as const, text: "出来了", markdown: "出来了", thread: null, isThreadReply: false, isMentioningMe: false, eventId: "D1:2.0:created", attribution: { text: "🤖 agent reply · confirmed by @Rikki" } };
+    const r = classifyCreated(evt, () => false, "UME1");
+    if (!r.ok) throw new Error("应该交出来");
+    expect(r.message.attribution).toBe("🤖 agent reply · confirmed by @Rikki");
+    const mine = slackMsg({ relevance: "self", sender: { id: "UME1", name: "你", bot: false }, text: "出来了", attribution: "🤖 agent reply · confirmed by @Rikki", replyTarget: { channel: "D1", ts: "2.0" } });
+    expect(isOwnAgentMessage(mine, [], "🤖 agent reply", "UME1")).toBe(true);
+    // 改了署名、或者清空了署名：照样认得（看的是有没有署名行，不看写的什么）。
+    expect(isOwnAgentMessage(mine, [], "", "UME1")).toBe(true);
+    // 别人（比如同事的 agent）发的、带署名行：照常收。
+    expect(isOwnAgentMessage(slackMsg({ attribution: "🤖 Fairy (Assistant) · confirmed by @Dave" }), [], "🤖 agent reply", "UME1")).toBe(false);
+    // 你自己手打的：照常收。
+    expect(isOwnAgentMessage(slackMsg({ relevance: "self", sender: { id: "UME1", name: "你", bot: false }, text: "帮我看看进度" }), [], "🤖 agent reply", "UME1")).toBe(false);
+    // 记下的发出编号。
+    expect(isOwnAgentMessage(slackMsg(), ["C1:1.0"], "🤖 agent reply", "UME1")).toBe(true);
+    // 以前发的：署名写在正文第一行。
+    expect(isOwnAgentMessage(slackMsg({ text: "🤖 *agent reply*\n出来了" }), [], "🤖 agent reply", "UME1")).toBe(true);
+  });
+
   it("Slack 把 _ 换成 * 也认得", async () => {
     const { startsWithSignature } = await import("../src/engine");
     expect(startsWithSignature("🤖 *agent reply*\n出来了", "🤖 agent reply")).toBe(true);

@@ -54,6 +54,8 @@ export interface GabrielMessageEvent {
   isThreadReply: boolean;
   isMentioningMe: boolean;
   eventId: string;
+  // 消息上方自称的 agent 署名行（gabriel-slack 从 blocks 里认出来、已经从 markdown 里去掉）。谁都能写，不能当证据。
+  attribution?: { text: string };
 }
 
 // message.deleted。
@@ -82,6 +84,8 @@ export interface Classified {
   text: string;
   // 原文里 @ 了谁（编号），插件再查名字。
   mentionIds: string[];
+  // 消息上方的 agent 署名行（有的话）。
+  attribution?: string;
   conversation: { label: string; audience: "direct" | "group" | "channel" };
 }
 
@@ -173,6 +177,7 @@ function classify(
       bot: evt.sender.isBot,
       text: evt.markdown || evt.text,
       mentionIds: mentionedIds(evt.text ?? ""),
+      ...(evt.attribution?.text ? { attribution: evt.attribution.text } : {}),
       conversation: conversationOf(evt.channel),
     },
   };
