@@ -140,7 +140,7 @@ export function loadState(): EngineState {
   return { nextId: s.nextId ?? 1, since: s.since ?? {}, seen: s.seen ?? [], threads: s.threads ?? [], sent: s.sent ?? [] };
 }
 
-// 开着的来源（GitHub、Jira 用本机登录的 gh、acli，没有密钥，靠这个记「开着」）。
+// 开着的来源（GitHub、Jira 用本机登录的 gh、acli 或 twg，没有密钥，靠这个记「开着」）。
 export type Enabled = Partial<Record<EventSource, boolean>>;
 
 export function loadEnabled(): Enabled {

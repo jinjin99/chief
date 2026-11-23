@@ -244,12 +244,12 @@ export function setupTab($: Engine, ui: Els, st: Setup, s: Snapshot | null, logT
       {st.busy === 'slack' && note('在弹出的 Chrome 窗口里登录 Slack（公司 SSO、确认新设备都照做），登好窗口会自己关掉。')}
       {d?.chrome === false && note('登录 Slack 要用 Google Chrome：先装一个 Chrome。')}
       {tool('github', 'brew install gh', 'gh auth login')}
-      {tool('jira', 'brew install acli', 'acli jira auth login --web')}
+      {tool('jira', 'brew install acli', 'acli jira auth login --web（用 twg 的话：twg login）')}
       {line('notion', off('notion'))}
       {(['slack', 'github', 'jira', 'notion'] as const).filter(src => on(src) && fails(src) > 0).map(src => (
         <Text key={`err-${src}`} size="footnote" color="error" wrap="wrap">{SOURCE[src]} {ago(s!.health[src]!.at)}：{s!.health[src]!.error ?? '没说为什么'}</Text>
       ))}
-      {note('Slack 连不上（比如登录过期）就点「重新登录」。GitHub、Jira 用你电脑上已经登录的 gh、acli。Notion 要令牌，在终端里连：pbpaste | chief connect notion（先复制好）。')}
+      {note('Slack 连不上（比如登录过期）就点「重新登录」。GitHub、Jira 用你电脑上已经登录的 gh、acli（Jira 也可以用 twg）。Notion 要令牌，在终端里连：pbpaste | chief connect notion（先复制好）。')}
     </Box>
   )
 

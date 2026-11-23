@@ -1,1 +1,1 @@
-{ "name": "chief", "version": "0.2.2", "description": "私人助理：Slack / GitHub / Jira 里找你的事，主会话判断后派给对应的 Claude 会话去办，面板上看进度、确认回复", "types": "./types/index.d.ts" }
+{ "name": "chief", "version": "0.2.3", "description": "私人助理：Slack / GitHub / Jira 里找你的事，主会话判断后派给对应的 Claude 会话去办，面板上看进度、确认回复", "types": "./types/index.d.ts" }

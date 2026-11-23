@@ -3,7 +3,7 @@
 //   chief install | uninstall          装进 / 卸掉 launchd，并装好 chief 命令（消息中心 skill 和面板在 chief 插件里）
 //   chief status | logs                看引擎、来源、进度；看最近的日志
 //   chief connect <来源> | disconnect <来源>   slack 默认开浏览器窗口让你登录（要公司 SSO 的会自己跳到工作区地址；--workspace acme 直接从那登；--stdin 改从标准输入读 Cookie）；notion 从标准输入读令牌；
-//                                      github / jira 用本机登录的 gh、acli
+//                                      github / jira 用本机登录的 gh、acli（或 twg）
 //   chief doctor                       设置页用：引擎、各来源、主会话的状态（JSON）
 //   chief events [--after N] [--follow [--take-over]]  打出编号大于 N 的事件，一行一条；--follow 一直等新的（主会话的 Monitor 用，顺便报「在听」；
 //                                      同时只能有一个，--take-over 让这个会话接手）
@@ -44,7 +44,7 @@ import { SlackPlugin, SLACK_COOKIE_D } from "./slack/plugin";
 import type { SecretCheck } from "./slack/types";
 import { GitHubSource, findGh, ghRunner } from "./sources/github";
 import { browserLogin, findChrome, workspaceUrl } from "./slack/login";
-import { JiraSource, acliRunner, findAcli } from "./sources/jira";
+import { JiraSource, findJiraCli } from "./sources/jira";
 import { NotionSource } from "./sources/notion";
 import {
   AUDIENCE_LABELS, HANDLE_LABELS, SCENARIOS, appendDecision, readEvents, expectOf, isTrusted, loadDecisions, appendEvent, ensureHome, loadCursor, loadDispatch, loadEnabled, loadPolicy, loadReplies, loadReviews, loadRoutes, loadThings,
@@ -687,10 +687,10 @@ async function importCandidates(): Promise<void> {
   const errors: string[] = [];
   const enabled = loadEnabled();
   if (enabled.jira) {
-    const acli = findAcli();
+    const cli = findJiraCli();
     try {
-      if (!acli) throw new Error("没找到 acli");
-      for (const it of await new JiraSource(acliRunner(acli)).open(signal)) {
+      if (!cli) throw new Error("没找到 acli 或 twg");
+      for (const it of await new JiraSource(cli).open(signal)) {
         out.push({ source: "jira", key: it.key, title: it.title, state: it.status, url: it.url, updated: it.updated, known: known.has(it.key), due: it.due });
       }
     } catch (error) {
@@ -1265,8 +1265,8 @@ async function connect(source: string | undefined, args: string[] = []): Promise
     const gh = findGh() ?? fail("没找到 gh：brew install gh，再 gh auth login");
     ok = printChecks(await new GitHubSource(ghRunner(gh)).check(signal));
   } else {
-    const acli = findAcli() ?? fail("没找到 acli：装 Atlassian 官方的 acli，再 acli jira auth login --web");
-    ok = printChecks(await new JiraSource(acliRunner(acli)).check(signal));
+    const cli = findJiraCli() ?? fail("没找到 acli 或 twg：装 Atlassian 官方的 acli 再 acli jira auth login --web，或者装 twg 再 twg login");
+    ok = printChecks(await new JiraSource(cli).check(signal));
   }
   if (!ok) fail("没通过，什么都没存");
   const enabled: Enabled = { ...loadEnabled(), [id]: true };
@@ -1349,7 +1349,7 @@ async function status(): Promise<void> {
   process.stdout.write(`${lines.join("\n")}\n`);
 }
 
-// 设置页用：一次看全「还差哪步」。gh / acli 装了才去试登录，试不过的把原因带回去。
+// 设置页用：一次看全「还差哪步」。gh / acli（或 twg）装了才去试登录，试不过的把原因带回去。
 async function doctor(): Promise<void> {
   const svc = await serviceState();
   const secrets = new KeychainStore();
@@ -1365,7 +1365,7 @@ async function doctor(): Promise<void> {
     }
   };
   const gh = findGh();
-  const acli = findAcli();
+  const jira = findJiraCli();
   const out = {
     version: existsSync(join(ROOT, "VERSION")) ? readFileSync(join(ROOT, "VERSION"), "utf8").trim() : null,
     node: process.version,
@@ -1374,7 +1374,7 @@ async function doctor(): Promise<void> {
     sources: {
       slack: { enabled: enabled.slack === true, ready: await secrets.has(SECRET.slack) },
       github: { enabled: enabled.github === true, tool: gh !== null, ...(gh ? await tried(() => new GitHubSource(ghRunner(gh)).check(signal)) : { ok: false, detail: "" }) },
-      jira: { enabled: enabled.jira === true, tool: acli !== null, ...(acli ? await tried(() => new JiraSource(acliRunner(acli)).check(signal)) : { ok: false, detail: "" }) },
+      jira: { enabled: enabled.jira === true, tool: jira !== null, ...(jira ? await tried(() => new JiraSource(jira).check(signal)) : { ok: false, detail: "" }) },
       notion: { enabled: enabled.notion === true, ready: await secrets.has(SECRET.notion) },
     },
     hub: hubAlive(),

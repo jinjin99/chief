@@ -11,7 +11,7 @@ import { keysOf } from "./keys";
 import { SlackPlugin, SLACK_COOKIE_D, type SlackAttribution } from "./slack/plugin";
 import type { InboundMessage } from "./slack/types";
 import { GitHubSource, findGh, ghRunner } from "./sources/github";
-import { JiraSource, acliRunner, findAcli } from "./sources/jira";
+import { JiraSource, findJiraCli } from "./sources/jira";
 import { NotionSource } from "./sources/notion";
 import type { Source, SourceItem } from "./sources/types";
 import { appendEvent, ensureHome, loadDispatch, loadEnabled, readEvents, readJson, loadPolicy, loadState, placementOf, paths, saveState, updateReplies, withLock, writeJson, type Enabled, type EngineState, type EventSource, type ChiefEvent, type Reply } from "./store";
@@ -97,9 +97,9 @@ export async function buildSources(enabled: Enabled, secrets: SecretStore): Prom
     else log("[github] 没找到 gh，跳过");
   }
   if (enabled.jira) {
-    const acli = findAcli();
-    if (acli) out.push(new JiraSource(acliRunner(acli)));
-    else log("[jira] 没找到 acli，跳过");
+    const cli = findJiraCli();
+    if (cli) out.push(new JiraSource(cli));
+    else log("[jira] 没找到 acli 或 twg，跳过");
   }
   if (enabled.notion) {
     const token = await secrets.get(SECRET.notion);
@@ -444,9 +444,9 @@ export class Engine {
       return { url: (await new GitHubSource(ghRunner(gh)).comment(r.target.ref ?? "", r.body, signal)).url };
     }
     if (r.source === "jira") {
-      const acli = findAcli();
-      if (!acli) throw new Error("没找到 acli");
-      return { url: (await new JiraSource(acliRunner(acli)).comment(r.target.key ?? "", r.body, signal)).url };
+      const cli = findJiraCli();
+      if (!cli) throw new Error("没找到 acli 或 twg");
+      return { url: (await new JiraSource(cli).comment(r.target.key ?? "", r.body, signal)).url };
     }
     throw new Error("Notion 集成只读，请你到页面上自己回");
   }

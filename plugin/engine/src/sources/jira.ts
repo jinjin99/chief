@@ -1,36 +1,151 @@
 // 照搬 aide 的 engine/src/sources/jira.ts（只留拉动态和评论）。
-// Jira：用你本机已经登录的 acli（Atlassian 官方命令行，acli jira auth login --web 用浏览器 OAuth 登录）。chief 不存任何 Jira 令牌。
+// Jira: uses a CLI already logged in on this machine — acli (Atlassian's official CLI, `acli jira auth login --web`)
+// or twg (Teamwork Graph CLI, `twg login`). With both installed, acli wins. chief stores no Jira token.
 // 拉指派给你、你报的、你关注的工单在 since 之后的变化：状态、截止时间、新评论。拉动态、给 agent 看的工具都只读（search、view、auth status）。
 // 写（建单、评论、改状态、指派）只在你点了「发出」之后由 Outbox 调用（见 outbox.ts），agent 自己调不到。
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
+import { join } from "node:path";
 import { runProgram } from "../program";
 import type { SecretCheck } from "../slack/types";
 import { SourceError, plain, type Ask, type Source, type SourceItem } from "./types";
 
 const ACLI_PATHS = ["/opt/homebrew/bin/acli", "/usr/local/bin/acli"];
+// twg's official installer puts it in ~/.local/bin.
+const TWG_PATHS = [join(homedir(), ".local/bin/twg"), "/opt/homebrew/bin/twg", "/usr/local/bin/twg"];
 const KEY = /^[A-Z][A-Z0-9]{1,9}-\d{1,7}$/;
 const MAX_ITEMS = 50;
 // parent：父单（史诗或上一级的单），同一个父单下的单多半是同一件事，拿来提议「合进去」。
 const VIEW_FIELDS = "summary,status,assignee,reporter,duedate,updated,priority,comment,parent";
 
-export type AcliRunner = (args: readonly string[], signal: AbortSignal) => Promise<string>;
+export type CliRunner = (args: readonly string[], signal: AbortSignal) => Promise<string>;
 
-export function findAcli(): string | null {
-  for (const p of ACLI_PATHS) if (existsSync(p)) return p;
-  return null;
+// The Jira operations chief needs. Each CLI adapts its own output to the acli shape ({ key, fields }).
+export interface JiraCli {
+  readonly name: "acli" | "twg";
+  // What to run in a terminal when not logged in.
+  readonly login: string;
+  status(signal: AbortSignal): Promise<{ site: string | null; email: string }>;
+  search(jql: string, fields: string, limit: number, signal: AbortSignal): Promise<Issue[]>;
+  view(key: string, fields: string, signal: AbortSignal): Promise<Issue>;
+  comment(key: string, body: string, signal: AbortSignal): Promise<void>;
 }
 
-export function acliRunner(bin: string): AcliRunner {
+export function findJiraCli(): JiraCli | null {
+  const acli = ACLI_PATHS.find((p) => existsSync(p));
+  if (acli) return acliCli(cliRunner(acli, "acli", ACLI_LOGIN, acliWhy));
+  const twg = TWG_PATHS.find((p) => existsSync(p));
+  return twg ? twgCli(cliRunner(twg, "twg", TWG_LOGIN, twgWhy)) : null;
+}
+
+interface Failure { reason: string; auth: boolean }
+
+function cliRunner(bin: string, name: JiraCli["name"], login: string, why: (stdout: string, stderr: string) => Failure): CliRunner {
   return async (args, signal) => {
     const out = await runProgram(bin, args, { cwd: homedir(), timeoutMs: 30_000, network: true, signal, maxOutput: 16 * 1024 * 1024 });
     if (out.aborted) throw new SourceError("取消了");
-    if (out.timedOut) throw new SourceError("acli 30 秒没回应");
+    if (out.timedOut) throw new SourceError(`${name} 30 秒没回应`);
     if (out.code !== 0) {
-      const why = `${out.stdout}\n${out.stderr}`.trim().split("\n").at(-1)?.slice(0, 200) ?? "";
-      throw new SourceError(/unauthorized|auth login/i.test(why) ? "acli 没登录 Jira，到终端里跑 acli jira auth login --web" : `acli 出错了：${why}`);
+      const { reason, auth } = why(out.stdout, out.stderr);
+      throw new SourceError(auth ? `${name} 没登录 Jira，到终端里跑 ${login}` : `${name} 出错了：${reason.slice(0, 200)}`);
     }
     return out.stdout;
+  };
+}
+
+// —— acli ——
+
+const ACLI_LOGIN = "acli jira auth login --web";
+
+function acliWhy(stdout: string, stderr: string): Failure {
+  const reason = `${stdout}\n${stderr}`.trim().split("\n").at(-1) ?? "";
+  return { reason, auth: /unauthorized|auth login/i.test(reason) };
+}
+
+export function acliCli(run: CliRunner): JiraCli {
+  return {
+    name: "acli",
+    login: ACLI_LOGIN,
+    async status(signal) {
+      const out = await run(["jira", "auth", "status"], signal);
+      return { site: /Site:\s*([a-z0-9-]+\.atlassian\.net)/i.exec(out)?.[1]?.toLowerCase() ?? null, email: /Email:\s*(\S+)/.exec(out)?.[1] ?? "?" };
+    },
+    search: async (jql, fields, limit, signal) =>
+      JSON.parse(await run(["jira", "workitem", "search", "--jql", jql, "--fields", fields, "--limit", String(limit), "--json"], signal)) as Issue[],
+    view: async (key, fields, signal) => JSON.parse(await run(["jira", "workitem", "view", key, "--fields", fields, "--json"], signal)) as Issue,
+    comment: async (key, body, signal) => acliWritten(await run(["jira", "workitem", "comment", "create", `--key=${key}`, `--body=${body}`, "--json"], signal), "评论"),
+  };
+}
+
+// 写操作（--json）的结果：每张单一条，FAILURE 带原因。acli 失败时退出码也是 0，只能看这个。
+interface WriteResult { results?: { status?: string; message?: string; id?: string }[]; totalCount?: number; successCount?: number }
+
+function acliWritten(out: string, what: string): void {
+  let res: WriteResult;
+  try {
+    res = JSON.parse(out) as WriteResult;
+  } catch {
+    if (/✗|failure|error/i.test(out)) throw new SourceError(`${what}没成功：${out.trim().split("\n").at(-1)?.slice(0, 200) ?? ""}`);
+    return;
+  }
+  const bad = (res.results ?? []).find((r) => r.status !== "SUCCESS");
+  if (bad || (res.totalCount !== undefined && res.successCount !== res.totalCount)) {
+    throw new SourceError(`${what}没成功：${(bad?.message ?? "Jira 没说为什么").slice(0, 200)}`);
+  }
+}
+
+// —— twg ——
+
+const TWG_LOGIN = "twg login";
+
+interface TwgError { code?: string; statusCode?: number; message?: string }
+
+// twg -o json failures: non-zero exit, `{ ok: false, error }` on stdout, a human "Error: ..." line on stderr.
+function twgWhy(stdout: string, stderr: string): Failure {
+  let error: TwgError | undefined;
+  try {
+    error = (JSON.parse(stdout) as { error?: TwgError }).error;
+  } catch {
+    // Not JSON: fall back to stderr.
+  }
+  const reason = error?.message ?? stderr.trim().split("\n")[0] ?? "";
+  return { reason, auth: error?.code === "AUTH_REQUIRED" || error?.statusCode === 401 || /not signed in|twg login/i.test(reason) };
+}
+
+function twgData(out: string): unknown {
+  const res = JSON.parse(out) as { ok?: boolean; data?: unknown; error?: TwgError };
+  if (res.ok === false) throw new SourceError(`twg 出错了：${(res.error?.message ?? "没说为什么").slice(0, 200)}`);
+  return res.data;
+}
+
+// twg flattens Jira fields onto the issue; fold them back under `fields` like acli.
+export function twgIssue(raw: unknown): Issue {
+  const { key, fields, ...rest } = (raw ?? {}) as { key?: string; fields?: Issue["fields"] } & Record<string, unknown>;
+  return { key: key ?? "", fields: fields ?? (rest as Issue["fields"]) };
+}
+
+export function twgCli(run: CliRunner): JiraCli {
+  return {
+    name: "twg",
+    login: TWG_LOGIN,
+    async status(signal) {
+      const d = twgData(await run(["doctor", "-o", "json"], signal)) as { auth?: { resolved?: { site?: string | null; user?: string | null } } };
+      const site = d.auth?.resolved?.site?.toLowerCase() ?? "";
+      // twg accepts a bare site prefix ("acme") as well as a hostname.
+      const host = /^[a-z0-9-]+$/.test(site) ? `${site}.atlassian.net` : site;
+      return { site: /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? host : null, email: d.auth?.resolved?.user ?? "?" };
+    },
+    async search(jql, fields, limit, signal) {
+      const d = twgData(await run(["jira", "workitem", "query", "--jql", jql, "--fields", fields, "--limit", String(limit), "-o", "json"], signal)) as { issues?: unknown[] };
+      return (d.issues ?? []).map(twgIssue);
+    },
+    async view(key, fields, signal) {
+      const d = twgData(await run(["jira", "workitem", "get", key, "--fields", fields, "-o", "json"], signal));
+      return twgIssue(Array.isArray(d) ? d[0] : d);
+    },
+    async comment(key, body, signal) {
+      twgData(await run(["jira", "workitem", "comment", "create", `--issue-id=${key}`, `--body=${body}`, "--body-format", "plain", "-o", "json"], signal));
+    },
   };
 }
 
@@ -46,9 +161,7 @@ export function adfText(node: unknown): string {
 
 interface Person { displayName?: string; accountType?: string; accountId?: string }
 
-// 写操作（--json）的结果：每张单一条，FAILURE 带原因。acli 失败时退出码也是 0，只能看这个。
-interface WriteResult { results?: { status?: string; message?: string; id?: string }[]; totalCount?: number; successCount?: number }
-interface Issue {
+export interface Issue {
   key: string;
   fields: {
     summary?: string; status?: { name?: string }; assignee?: Person | null; reporter?: Person | null;
@@ -72,7 +185,7 @@ export class JiraSource implements Source {
   // 你在 Jira 上的显示名（从指派给你的工单里认出来，认一次就记住）。
   private me: string | null = null;
 
-  constructor(private readonly acli: AcliRunner) {}
+  constructor(private readonly cli: JiraCli) {}
 
   whoami(): string | null {
     return this.me;
@@ -82,7 +195,7 @@ export class JiraSource implements Source {
   private async learnMe(signal: AbortSignal): Promise<void> {
     if (this.me) return;
     try {
-      const found = JSON.parse(await this.acli(["jira", "workitem", "search", "--jql", "assignee = currentUser() ORDER BY updated DESC", "--fields", "key,summary,status", "--limit", "1", "--json"], signal)) as Issue[];
+      const found = await this.cli.search("assignee = currentUser() ORDER BY updated DESC", "key,summary,status", 1, signal);
       const key = found[0]?.key;
       if (!key || !KEY.test(key)) return;
       const name = (await this.view(key, "assignee", signal)).fields.assignee?.displayName;
@@ -94,12 +207,11 @@ export class JiraSource implements Source {
 
   async check(signal: AbortSignal): Promise<SecretCheck[]> {
     try {
-      const out = await this.acli(["jira", "auth", "status"], signal);
-      this.site = /Site:\s*([a-z0-9-]+\.atlassian\.net)/i.exec(out)?.[1]?.toLowerCase() ?? null;
-      const email = /Email:\s*(\S+)/.exec(out)?.[1] ?? "?";
-      return [{ label: "acli 已登录 Jira", pass: this.site !== null, detail: this.site ? `${this.site}，${email}` : "没认出站点" }];
+      const { site, email } = await this.cli.status(signal);
+      this.site = site;
+      return [{ label: `${this.cli.name} 已登录 Jira`, pass: site !== null, detail: site ? `${site}，${email}` : "没认出站点" }];
     } catch (error) {
-      return [{ label: "acli 已登录 Jira", pass: false, detail: error instanceof Error ? error.message : "没成功" }];
+      return [{ label: `${this.cli.name} 已登录 Jira`, pass: false, detail: error instanceof Error ? error.message : "没成功" }];
     }
   }
 
@@ -107,7 +219,7 @@ export class JiraSource implements Source {
   async open(signal: AbortSignal): Promise<{ key: string; title: string; status: string; url: string; updated: string; due: string | null }[]> {
     const site = await this.siteOf(signal);
     const jql = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC";
-    const found = JSON.parse(await this.acli(["jira", "workitem", "search", "--jql", jql, "--fields", "key,summary,status", "--limit", "30", "--json"], signal)) as Issue[];
+    const found = await this.cli.search(jql, "key,summary,status", 30, signal);
     const items = found.filter((it) => KEY.test(it.key));
     // 搜索不给截止日期，一张张看（五张一起）。
     const due = new Map<string, string | null>();
@@ -126,36 +238,22 @@ export class JiraSource implements Source {
   }
 
   private async view(key: string, fields: string, signal: AbortSignal): Promise<Issue> {
-    return JSON.parse(await this.acli(["jira", "workitem", "view", key, "--fields", fields, "--json"], signal)) as Issue;
+    return this.cli.view(key, fields, signal);
   }
 
   // —— 写：只在你说了「发 N」之后由 chief reply send 调用 ——
-
-  private written(out: string, what: string): void {
-    let res: WriteResult;
-    try {
-      res = JSON.parse(out) as WriteResult;
-    } catch {
-      if (/✗|failure|error/i.test(out)) throw new SourceError(`${what}没成功：${out.trim().split("\n").at(-1)?.slice(0, 200) ?? ""}`);
-      return;
-    }
-    const bad = (res.results ?? []).find((r) => r.status !== "SUCCESS");
-    if (bad || (res.totalCount !== undefined && res.successCount !== res.totalCount)) {
-      throw new SourceError(`${what}没成功：${(bad?.message ?? "Jira 没说为什么").slice(0, 200)}`);
-    }
-  }
 
   async comment(key: string, body: string, signal: AbortSignal): Promise<{ url: string; ref: string }> {
     if (!KEY.test(key)) throw new SourceError(`工单号不对：${key}`);
     if (!body.trim()) throw new SourceError("评论是空的");
     const site = await this.siteOf(signal);
-    this.written(await this.acli(["jira", "workitem", "comment", "create", `--key=${key}`, `--body=${body}`, "--json"], signal), "评论");
+    await this.cli.comment(key, body, signal);
     return { url: `https://${site}/browse/${key}`, ref: key };
   }
 
   private async siteOf(signal: AbortSignal): Promise<string> {
     if (!this.site) await this.check(signal);
-    if (!this.site) throw new SourceError("acli 没登录 Jira，到终端里跑 acli jira auth login --web");
+    if (!this.site) throw new SourceError(`${this.cli.name} 没登录 Jira，到终端里跑 ${this.cli.login}`);
     return this.site;
   }
 
@@ -164,7 +262,7 @@ export class JiraSource implements Source {
     await this.learnMe(signal);
     const minutes = Math.max(1, Math.ceil((Date.now() - since.getTime()) / 60_000) + 1);
     const jql = `(assignee = currentUser() OR reporter = currentUser() OR watcher = currentUser()) AND updated >= "-${minutes}m" ORDER BY updated ASC`;
-    const found = JSON.parse(await this.acli(["jira", "workitem", "search", "--jql", jql, "--fields", "key,summary,status", "--limit", String(MAX_ITEMS), "--json"], signal)) as Issue[];
+    const found = await this.cli.search(jql, "key,summary,status", MAX_ITEMS, signal);
     const items: SourceItem[] = [];
     for (const hit of found) {
       if (!KEY.test(hit.key)) continue;

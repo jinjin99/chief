@@ -14,7 +14,7 @@ Slack（推送） / GitHub、Jira、Notion（每 5 分钟拉一次）
 
 ## 装
 
-要求：macOS、Node 24 以上、Google Chrome（登录 Slack 用）。用 GitHub / Jira 的话，先装好并登录 `gh`、`acli`。
+要求：macOS、Node 24 以上、Google Chrome（登录 Slack 用）。用 GitHub / Jira 的话，先装好并登录 `gh`、`acli`（Jira 也可以用 `twg`：`twg login`；两个都装了用 `acli`）。
 
 1. 装插件：
 
@@ -26,7 +26,7 @@ Slack（推送） / GitHub、Jira、Notion（每 5 分钟拉一次）
 2. 在 Claude App 里新建一个会话（权限模式选 bypass permissions），输入 `/chief` 打开面板，在「设置」页按顺序点：
    - **装引擎**：建工作目录 `~/chief`，把引擎放到 `~/chief/data/app`，装依赖，装进 launchd（开机自动跑）。
    - **登录 Slack**：弹出一个单独的 Chrome 窗口，你在里面正常登录。工作区要公司 SSO 的，登上账号后会自动再开一个工作区地址的窗口，在那里走完 SSO。登好窗口自己关掉，登录凭证直接存进钥匙串。
-   - **连上 GitHub / Jira**（可选）：用本机已经登录的 `gh`、`acli`。
+   - **连上 GitHub / Jira**（可选）：用本机已经登录的 `gh`、`acli` 或 `twg`。
    - **开消息中心**：这个会话就成了主会话，之后一直开着。
 
 插件更新后，设置页会提示「更新引擎」，点一下就好。
