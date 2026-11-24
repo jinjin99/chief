@@ -55,6 +55,7 @@ import { importCandidates, review, rules } from "./commands/rules";
 import { archive, awake, configCmd, connect, disconnect, doctor, engineCmd, install, logs, run, slackCmd, status, uninstall } from "./commands/setup";
 import { searchCmd } from "./commands/search";
 import { ask, board, thing } from "./commands/things";
+import { triage } from "./commands/triage";
 import { undoCmd } from "./commands/undo";
 import { migrateAll } from "./migrate";
 import { ensureHome } from "./store";
@@ -96,6 +97,7 @@ const COMMANDS: Readonly<Record<string, (args: string[]) => Promise<void> | void
   archive: () => archive(),
   undo: (args) => undoCmd(args),
   search: (args) => searchCmd(args),
+  triage: (args) => triage(args),
 };
 
 async function main(argv: string[]): Promise<void> {
@@ -105,7 +107,7 @@ async function main(argv: string[]): Promise<void> {
   // 旧格式的数据文件先升到现在的格式（见 migrate.ts）。
   migrateAll();
   if (cmd === undefined || !Object.hasOwn(COMMANDS, cmd)) {
-    fail("chief run|install|uninstall|export|status|logs|config|quiet|digest|connect|disconnect|events|show|cursor|hub|engine|route|reply|mark|board|thing|ask|rules|review|import|test|eval|slack|undo|search");
+    fail("chief run|install|uninstall|export|status|logs|config|quiet|digest|connect|disconnect|events|show|cursor|hub|engine|route|reply|mark|board|thing|ask|rules|review|import|test|eval|slack|undo|search|triage");
   }
   return COMMANDS[cmd]!(args);
 }

@@ -49,6 +49,8 @@ Notion ─────┤                                                       
 
 一个普通的 Claude App 会话，开在 `~/chief`，加载 `plugin/skills/hub/SKILL.md`。它用 Monitor 跑 `chief events --after <cursor> --follow`，每来一行事件就醒一次：归到哪件事 → 按规矩判断 → 派活或记下或问你 → `chief cursor` 记进度。不常用的流程（转交模板、导入、面板指令、开张、approve、回复、主动发消息）拆在 skill 目录下的几份 md 里，用到时再读。
 
+主会话每醒一次都要把整段对话重读一遍，很贵，所以多半只用记一笔的事件先不叫醒它（分诊）：引擎发事件时按规矩判断要不要扣住（`triage.ts`：规矩是只记下的外部消息、工作会话的普通进展；带 PR 链接、工单号的，接得上正在做的事的不扣），主会话所在会话里的插件（`hooks/triage.ts`）每 15 秒用 `chief triage list / claim` 领扣住的事件，让 Haiku（`$.model.complete`）看一眼：只记下的照主会话的办法 `chief thing update`、`chief mark … noted`；要处理、拿不准、出错的 `chief triage wake`，`chief events` 才交给主会话，带上理由。插件 3 分钟没来、领了 5 分钟没看完、扣了 15 分钟没人领的，照常交。提示词在 `hooks/triage-prompt.ts`。
+
 工作会话是 App 里独立的会话，各自开在那件事该在的仓库目录里。它们不直接对外发东西，只把进展和回复稿用 `send_message` 交回主会话。
 
 ## 面板
@@ -88,6 +90,7 @@ Notion ─────┤                                                       
 | `data/refs.json` | 引擎 | 问题、回复、事情提到的 PR 现在什么样，和每条上次看到的样子（比出变了没有） |
 | `data/archive/` | 引擎 | 办完 7 天的旧记录，按月一个文件 |
 | `data/logs/` | 引擎 | 日志（不写密钥和消息原文） |
+| `data/triage.json` | `chief triage` | 分诊：插件最近一次来看的时间，每条扣住的事件谁领了、要不要交给主会话 |
 | `data/held.json` | 引擎 | 免打扰时没弹的通知（免打扰一过合成一条弹，也进汇总） |
 | `exports/` | `chief export` | 导出的备份（不含密钥；`uninstall --purge` 不删它） |
 

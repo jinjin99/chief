@@ -17,6 +17,7 @@
 //   locale             面板、通知、主会话跟你说话的语言："zh" | "en"（见 messages.ts、shared/i18n.ts） 默认 "zh"
 //   quietHours         免打扰时段：{"start":"22:00","end":"08:00"} 或 null         默认 null
 //   digest             每天汇总：{"morning":"HH:MM" 或 null, "evening":"HH:MM" 或 null} 默认都是 null
+//   triage             只用记一笔的事件先给 Haiku 看、不叫醒主会话（见 triage.ts）：true | false   默认 true
 import { existsSync, readFileSync } from "node:fs";
 import { HHMM } from "./shared/schedule";
 import { paths, withLock, writeJson } from "./store";
@@ -37,13 +38,14 @@ export interface Config {
   locale: "zh" | "en";
   quietHours: { start: string; end: string } | null;
   digest: { morning: string | null; evening: string | null };
+  triage: boolean;
 }
 
 export function defaultConfig(): Config {
   return {
     pollMinutes: 5, firstLookbackHours: 24, missedMinutes: 10, hubDownMinutes: 5, nagMinutes: 30, keepDays: 7, undoSeconds: 5,
     items: { github: 50, jira: 50 }, slackCatchUpHours: 48, logMaxMB: 10, refCheckMinutes: 10, staleDraftHours: 12,
-    locale: "zh", quietHours: null, digest: { morning: null, evening: null },
+    locale: "zh", quietHours: null, digest: { morning: null, evening: null }, triage: true,
   };
 }
 
@@ -55,7 +57,7 @@ const RANGES: Record<string, [number, number]> = {
 };
 
 // chief config set 认得的键。
-export const CONFIG_KEYS = [...Object.keys(RANGES), "locale", "quietHours", "quietHours.start", "quietHours.end", "digest", "digest.morning", "digest.evening"];
+export const CONFIG_KEYS = [...Object.keys(RANGES), "locale", "quietHours", "quietHours.start", "quietHours.end", "digest", "digest.morning", "digest.evening", "triage"];
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -88,6 +90,11 @@ export function validateConfig(raw: unknown): { config: Config; problems: string
   if (locale !== undefined) {
     if (locale === "zh" || locale === "en") config.locale = locale;
     else problems.push('locale 只能是 "zh" 或 "en"，用默认值 "zh"');
+  }
+  const triage = get("triage");
+  if (triage !== undefined) {
+    if (typeof triage === "boolean") config.triage = triage;
+    else problems.push("triage 只能是 true 或 false，按 true 算");
   }
   const quiet = get("quietHours");
   if (quiet !== undefined && quiet !== null) {
@@ -149,7 +156,7 @@ export function liveConfig(): Config {
 }
 
 // 改了马上生效、不用重启引擎的键。
-export const LIVE_KEYS = ["quietHours", "digest", "locale"];
+export const LIVE_KEYS = ["quietHours", "digest", "locale", "triage"];
 
 // 命令行给的值：能当 JSON 读的（数字、null、对象、带引号的字符串）就当 JSON，否则当字符串（08:30、en）。
 function parseValue(text: string): unknown {

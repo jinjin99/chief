@@ -5,6 +5,7 @@ import { SESSION, fail, flag, num, oneLine, stdinText, title } from "../args";
 import { KEY } from "../keys";
 import { LineTail } from "../tail";
 import { appendDecision, loadCursor, loadDecisions, loadDispatch, loadRoutes, loadThings, paths, readEvents, readJson, scenarioOf, updateJson, withLock, writeJson, type ChiefEvent, type Decision, type Dispatch, type Routes } from "../store";
+import { loadTriage, released, wakeReason } from "../triage";
 import { recordMark, recordSkip } from "../undo";
 import { updateThings } from "./things";
 
@@ -16,9 +17,12 @@ export function eventById(id: number): ChiefEvent {
 }
 
 export function streamLine(e: ChiefEvent): string {
+  const { hold, heldAt: _heldAt, ...rest } = e;
   const text = e.text.length > MAX_TEXT_IN_STREAM ? `${e.text.slice(0, MAX_TEXT_IN_STREAM)}…（全文：chief show ${e.id}）` : e.text;
   const related = relatedOf(e);
-  return JSON.stringify({ ...e, text, ...(related ? { related } : {}) });
+  // 插件用 Haiku 看过、觉得要你处理的：带上它的理由。
+  const triage = hold ? wakeReason(e.id) : null;
+  return JSON.stringify({ ...rest, text, ...(related ? { related } : {}), ...(triage ? { triage } : {}) });
 }
 
 // 同一个人、同一个 Slack 对话（私信，或同一个 thread）里还没了结的事情和问题。
@@ -50,10 +54,15 @@ export function events(args: string[]): void {
   let after = num(flag(args, "--after") ?? "0", "--after ");
   const follow = args.includes("--follow");
   const tail = new LineTail(paths().events);
+  // 还扣着给插件看的（见 triage.ts）：插件放行了、或者插件不在了再交；插件自己记下了就不交。
+  const held = new Map<number, ChiefEvent>();
   const drain = () => {
     const lines = tail.read();
-    if (lines.length === 0) return;
+    if (lines.length === 0 && held.size === 0) return;
     const handled = loadDispatch();
+    const triage = loadTriage();
+    const now = Date.now();
+    const out: ChiefEvent[] = [];
     for (const l of lines) {
       let e: ChiefEvent;
       try {
@@ -64,9 +73,17 @@ export function events(args: string[]): void {
       if (e.id > after) {
         after = e.id;
         // 已经判断过的不再交给主会话（重新挂 Monitor 时会从进度重读一遍）。
-        if (!handled[e.id]) process.stdout.write(`${streamLine(e)}\n`);
+        if (!handled[e.id]) held.set(e.id, e);
       }
     }
+    for (const [id, e] of held) {
+      if (handled[id]) held.delete(id);
+      else if (released(e, triage, now)) {
+        held.delete(id);
+        out.push(e);
+      }
+    }
+    for (const e of out.sort((a, b) => a.id - b.id)) process.stdout.write(`${streamLine(e)}\n`);
   };
   // 主会话只能有一个：谁挂着 chief events --follow，谁就是主会话。已经有一个在听，第二个直接退出（除非 --take-over 接手）。
   if (follow) {

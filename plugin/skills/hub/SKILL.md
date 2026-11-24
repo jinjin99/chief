@@ -118,7 +118,9 @@ description: chief 消息中心，用户的私人助理主会话。在 Claude Ap
 
 ## 来了新消息（Monitor 通知，一行一条 JSON）
 
-字段：`id` 事件号；`source`（slack / github / jira / notion / session）；`title`、`from`、`url` 在哪、谁发的、链接；`text` 原文或摘要（截断了用 `chief show <id>` 看全文）；`why` 为什么找用户；`keys` 这件事的键；`reply` 回复回到哪；`related` 同一个人 / 私信 / thread 里还没了结的事情和开着的问题。
+字段：`id` 事件号；`source`（slack / github / jira / notion / session）；`title`、`from`、`url` 在哪、谁发的、链接；`text` 原文或摘要（截断了用 `chief show <id>` 看全文）；`why` 为什么找用户；`keys` 这件事的键；`reply` 回复回到哪；`related` 同一个人 / 私信 / thread 里还没了结的事情和开着的问题；`triage` 有的话，是插件让 Haiku 先看过、觉得要你处理的理由（只作参考，照常判断）。
+
+多半只用记一笔的事件（规矩是只记下的 thread 后续、工作会话的普通进展）插件会先让 Haiku 看：它记下的你收不到，「最近」里理由写「Haiku：…」，用户觉得记错了会撤回，撤回的会重新交给你。
 
 特殊的几种：
 

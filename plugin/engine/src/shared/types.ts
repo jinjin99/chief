@@ -35,6 +35,9 @@ export interface ChiefEvent {
   eval?: number;
   // 引擎交的 ref.changed（PR 状态变了）、reply.stale（稿子放久了）：受影响的问题、回复、事情的编号，主会话照着撤问题、退稿（见 refs.ts）。
   affected?: { asks: number[]; replies: number[]; things: number[] };
+  // 先扣住给面板插件用 Haiku 看一眼（见 triage.ts）；heldAt 是扣下的时间。
+  hold?: boolean;
+  heldAt?: string;
 }
 
 // ── 每条事件怎么处理的 ──

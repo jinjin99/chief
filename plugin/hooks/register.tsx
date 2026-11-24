@@ -9,6 +9,7 @@ import type { EngineInterface as Engine, Register } from 'claude-code'
 
 import { refresh, chiefDir } from './data'
 import { confirmAsked, ensureKey, noteUserSaid } from './confirm'
+import { startTriage } from './triage'
 import { isHub, isHubMonitor, markHub, recordCall } from './usage'
 import { autoUpdate, checkSetup, missing, readSetup, setupTab } from './setup'
 import { t } from './i18n'
@@ -82,6 +83,8 @@ export const register: Register = on => {
     await $.command.register({ name: 'chief', description: t().app.command })
     // 引擎跟着插件自动更新、配好「以你的名义发」的钥匙：放后台跑，不拖慢会话开起来。
     void autoUpdate($).then(() => ensureKey($)).catch(() => {})
+    // 这个会话是主会话（插件重新加载、会话恢复）：接着分诊。
+    if (await isHub($).catch(() => false)) startTriage($)
     return next(e)
   })
 
@@ -106,7 +109,10 @@ export const register: Register = on => {
   on('tool.call', { tool: 'Monitor' }, async ($, e, next) => {
     // 工具的参数直接在 e 上（e.command），不在 e.input 里。
     const command = (e as { command?: unknown }).command
-    if (isHubMonitor(typeof command === 'string' ? command : undefined)) await markHub($).catch(() => {})
+    if (isHubMonitor(typeof command === 'string' ? command : undefined)) {
+      await markHub($).catch(() => {})
+      startTriage($)
+    }
     return next(e)
   })
 

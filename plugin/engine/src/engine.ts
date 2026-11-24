@@ -23,6 +23,7 @@ import { SlackPlugin, SLACK_COOKIE_D, describeSendError, sentThreadKey, type Sla
 import type { ChannelStatus, InboundMessage } from "./slack/types";
 import { DESCRIPTORS, SOURCES, descriptorOf } from "./sources/registry";
 import type { Source, SourceItem } from "./sources/types";
+import { loadTriage, released, shouldHold } from "./triage";
 import { appendEvent, ensureHome, loadCorrupt, loadDispatch, loadEnabled, readEvents, readJson, loadPolicy, loadState, loadThings, placementOf, paths, saveState, updateReplies, withLock, writeJson, type Enabled, type EngineState, type ChiefEvent, type Reply, type SourceHealth } from "./store";
 
 // 拉外部来源的间隔、第一次连上往回看多久：config.json 的 pollMinutes（默认 5 分钟）、firstLookbackHours（默认一天）。
@@ -404,7 +405,9 @@ export class Engine {
       const now = Date.now();
       const handled = loadDispatch();
       const events = readEvents();
-      const missed = missedEvents(events, handled, this.firstSeen, now);
+      // 还扣着给插件看的不算交出去了（见 triage.ts）。
+      const triage = loadTriage();
+      const missed = missedEvents(events.filter((e) => released(e, triage, now)), handled, this.firstSeen, now);
       const down = hubDown(readJson<{ at?: string; stopped?: boolean }>(paths().alive, {}), now);
       // 主会话在听：漏掉的再交一次（每条只补交一次，引擎重启也不重复）。
       if (!down) {
@@ -495,15 +498,22 @@ export class Engine {
   private emit(e: Omit<ChiefEvent, "id">, dedupe: string): boolean {
     if (this.state.seen.includes(dedupe)) return false;
     this.state.seen.push(dedupe);
+    // 多半只用记一笔的先扣住，给插件用 Haiku 看一眼（见 triage.ts）。算不出来就照常交。
+    let hold = false;
+    try {
+      hold = shouldHold(e);
+    } catch (error) {
+      log(`看要不要先扣住没成：${error instanceof Error ? error.message : String(error)}`);
+    }
     // 拿着锁取号、记下编号再写事件：chief test 也会造事件，两边不会拿到同一个号；中间断了只会空一个号。
     const event = withLock(paths().state, () => {
       this.state.nextId = Math.max(this.state.nextId, loadState().nextId);
-      const ev: ChiefEvent = { id: this.state.nextId++, ...e };
+      const ev: ChiefEvent = { id: this.state.nextId++, ...e, ...(hold ? { hold: true, heldAt: new Date().toISOString() } : {}) };
       saveState(this.state);
       appendEvent(ev);
       return ev;
     });
-    log(`事件 #${event.id}：${event.source} ${event.why.join("/")}`);
+    log(`事件 #${event.id}：${event.source} ${event.why.join("/")}${hold ? "（先给插件看）" : ""}`);
     return true;
   }
 
