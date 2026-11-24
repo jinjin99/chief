@@ -4,6 +4,21 @@
 
 在 Claude App 里给你一个私人助理主会话（「chief 消息中心」）：Slack / GitHub / Jira 里找你的事，它能办的派给工作会话去办，跟着进度，只把要你拍板的列给你。你只和主会话打交道，旁边的 chief 面板看进度、确认回复、改规矩。
 
+![Claude App 里的 chief 面板：要你的事，一件事一张卡](docs/images/for-you.png)
+
+<details>
+<summary>更多截图：进度、规矩、设置</summary>
+
+![进度：在办的每件事，急的在前](docs/images/progress.png)
+
+![规矩：每种消息怎么办](docs/images/rules.png)
+
+![设置：引擎、来源、主会话的状态](docs/images/setup.png)
+
+</details>
+
+截图里的数据是编的（`scripts/demo-data.mts`），面板切到中文就是中文界面。
+
 一个插件里装着三样东西：面板（`/chief`）、消息中心 skill（`/chief:hub`）和后台引擎。装好插件后在面板的「设置」页点几下就能用。
 
 ```

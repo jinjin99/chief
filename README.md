@@ -4,6 +4,21 @@ English · [中文](README.zh.md)
 
 chief gives you a personal-assistant session in the Claude App (the "chief 消息中心", message hub). When someone needs you on Slack, GitHub, Jira or Notion, the hub decides what to do by your rules, hands real work to separate Claude work sessions, tracks progress, and only surfaces what you must decide. You talk to the hub; a side panel (`/chief`) shows progress, pending replies and rules.
 
+![The chief panel in the Claude App: what needs you, one card per thing](docs/images/for-you.png)
+
+<details>
+<summary>More screenshots: Progress, Rules, Setup</summary>
+
+![Progress: every thing in flight, most urgent first](docs/images/progress.png)
+
+![Rules: how each kind of message is handled](docs/images/rules.png)
+
+![Setup: engine, sources and hub status](docs/images/setup.png)
+
+</details>
+
+The screenshots show made-up data (`scripts/demo-data.mts`).
+
 The plugin ships three parts: the panel (`/chief`), the hub skill (`/chief:hub`) and a background engine. Everything is set up from the panel's Setup tab.
 
 **Language.** The panel, engine notifications and the hub default to Chinese. After the engine is installed, switch to English with the **Language · 语言** selector at the bottom of the Setup tab, or run `chief config set locale en`. The panel switches right away; the hub picks it up the next time it wakes (it reads `chief config`) and then talks to you, and writes titles, progress, questions and digests, in English. Replies it drafts to other people keep the language of that conversation.
