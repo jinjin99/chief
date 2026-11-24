@@ -11,15 +11,36 @@ import { updateThings } from "./things";
 
 // 一条事件在 Monitor 通知里最多带这么多字，全文用 chief show 看。
 export const MAX_TEXT_IN_STREAM = 1500;
+// related 里每个问题最多带这么多字。
+const RELATED_QUESTION = 150;
+const SAME_RELATED_MS = 6 * 3600_000;
 
 export function eventById(id: number): ChiefEvent {
   return readEvents().find((e) => e.id === id) ?? archivedEvent(id) ?? fail(`没有事件 #${id}`);
 }
 
-export function streamLine(e: ChiefEvent): string {
+// 主会话这次挂上 Monitor 以后，每个对话上一次带的 related：一样的就不再带一遍。
+// 对话：私信按频道，频道里按 thread（和 relatedOf 认「附近」的办法一样）；别的来源按第一个键。
+function conversationOf(e: ChiefEvent): string {
+  if (e.source !== "slack") return e.keys[0] ?? "";
+  return e.why.includes("dm") ? `${e.reply.channel}` : `${e.reply.channel}:${e.reply.thread_ts ?? e.reply.ts}`;
+}
+
+export type SeenRelated = Map<string, { id: number; rel: string; at: number }>;
+
+export function streamLine(e: ChiefEvent, seen?: SeenRelated): string {
   const { hold, heldAt: _heldAt, ...rest } = e;
   const text = e.text.length > MAX_TEXT_IN_STREAM ? `${e.text.slice(0, MAX_TEXT_IN_STREAM)}…（全文：chief show ${e.id}）` : e.text;
-  const related = relatedOf(e);
+  let related: unknown = relatedOf(e);
+  if (related && seen) {
+    const key = conversationOf(e);
+    const rel = JSON.stringify(related);
+    const at = Date.parse(e.at);
+    const prev = seen.get(key);
+    // 同一个 thread 6 小时内和上一条一样：主会话刚看过，只说「同 #N」。
+    if (prev && prev.rel === rel && !(at - prev.at >= SAME_RELATED_MS)) related = { sameAs: prev.id };
+    else seen.set(key, { id: e.id, rel, at });
+  }
   // 插件用 Haiku 看过、觉得要你处理的：带上它的理由。
   const triage = hold ? wakeReason(e.id) : null;
   return JSON.stringify({ ...rest, text, ...(related ? { related } : {}), ...(triage ? { triage } : {}) });
@@ -44,8 +65,9 @@ export function relatedOf(e: ChiefEvent, all: ChiefEvent[] = readEvents()): { th
   if (things.length === 0) return null;
   const ids = new Set(things.map((x) => x.id));
   return {
-    things: things.map((x) => ({ id: x.id, title: x.title, status: x.status, session: x.session ?? null, progress: x.progress })),
-    asks: t.asks.filter((a) => a.status === "open" && ids.has(a.thing)).map((a) => ({ id: a.id, thing: a.thing, question: a.question, suggest: a.suggest })),
+    // 只带认得出是哪件、哪个问题的：同一个 thread 来十条就附十次，都留在主会话的上下文里。进展、建议要看再 chief thing list / chief ask show。
+    things: things.map((x) => ({ id: x.id, title: x.title, status: x.status, session: x.session ?? null })),
+    asks: t.asks.filter((a) => a.status === "open" && ids.has(a.thing)).map((a) => ({ id: a.id, thing: a.thing, question: oneLine(a.question, RELATED_QUESTION) })),
   };
 }
 
@@ -56,6 +78,7 @@ export function events(args: string[]): void {
   const tail = new LineTail(paths().events);
   // 还扣着给插件看的（见 triage.ts）：插件放行了、或者插件不在了再交；插件自己记下了就不交。
   const held = new Map<number, ChiefEvent>();
+  const seen: SeenRelated = new Map();
   const drain = () => {
     const lines = tail.read();
     if (lines.length === 0 && held.size === 0) return;
@@ -83,7 +106,7 @@ export function events(args: string[]): void {
         out.push(e);
       }
     }
-    for (const e of out.sort((a, b) => a.id - b.id)) process.stdout.write(`${streamLine(e)}\n`);
+    for (const e of out.sort((a, b) => a.id - b.id)) process.stdout.write(`${streamLine(e, seen)}\n`);
   };
   // 主会话只能有一个：谁挂着 chief events --follow，谁就是主会话。已经有一个在听，第二个直接退出（除非 --take-over 接手）。
   if (follow) {

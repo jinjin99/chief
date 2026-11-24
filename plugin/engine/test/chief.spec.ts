@@ -180,6 +180,14 @@ describe("事情和要你定的", () => {
     const line = JSON.parse(chief(h, "events", "--after", "1").trim());
     expect(line.related.things).toMatchObject([{ id: 1, title: "报表迁移" }]);
     expect(line.related.asks).toMatchObject([{ id: 1, question: "Dave 问方不方便 huddle" }]);
+    // 只带认得出是哪件、哪个问题的：进展、建议要看再查。
+    expect(line.related.things[0]).not.toHaveProperty("progress");
+    expect(line.related.asks[0]).not.toHaveProperty("suggest");
+    // 同一段私信紧接着又来一条：related 一样，只说和上一条一样。
+    writeFileSync(join(h, "events.jsonl"), `${dm(1, "现在方便 huddle 吗")}\n${dm(2, "是的，那我跟他说吧")}\n${dm(3, "他说好")}\n`);
+    const [a, b] = chief(h, "events", "--after", "1").trim().split("\n").map((l) => JSON.parse(l));
+    expect(a.related.things).toHaveLength(1);
+    expect(b.related).toEqual({ sameAs: 2 });
   });
 
   it("记事情、问你、你答了回到进行中；文字只从标准输入进", () => {
