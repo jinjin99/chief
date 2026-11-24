@@ -148,7 +148,12 @@ describe("cli", () => {
     expect(chiefFails(h, "reply", "add", "--event", "1", "--file", outside)).toContain("drafts");
     expect(chiefFails(h, "reply", "add", "--event", "1", "--file", join(h, "drafts", "..", "x.md"))).toContain("drafts");
     writeFileSync(join(h, "drafts", "1.md"), "好的，我来看");
-    expect(JSON.parse(chief(h, "reply", "add", "--event", "1", "--file", join(h, "drafts", "1.md")))).toMatchObject({ id: 1, source: "slack", scenario: "slack_dm", policy: "ask" });
+    const added = JSON.parse(chief(h, "reply", "add", "--event", "1", "--file", join(h, "drafts", "1.md")));
+    expect(added).toMatchObject({ id: 1, source: "slack", scenario: "slack_dm", policy: "ask" });
+    // 稿子多长、开头是什么：主会话据此决定要不要打开全文。
+    expect(added.lines).toBeGreaterThan(0);
+    expect(added.chars).toBe(readFileSync(join(h, "drafts", "1.md"), "utf8").trim().length);
+    expect(typeof added.preview).toBe("string");
     execFileSync(process.execPath, ["--import", TSX, CLI, "reply", "edit", "1"], { env: { ...process.env, CHIEF_HOME: h }, input: "好的，下午看" });
     sendByYou(h, "1");
     let r = JSON.parse(chief(h, "reply", "list"))[0];

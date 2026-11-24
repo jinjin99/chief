@@ -18,6 +18,7 @@
 //   quietHours         免打扰时段：{"start":"22:00","end":"08:00"} 或 null         默认 null
 //   digest             每天汇总：{"morning":"HH:MM" 或 null, "evening":"HH:MM" 或 null} 默认都是 null
 //   triage             只用记一笔的事件先给 Haiku 看、不叫醒主会话（见 triage.ts）：true | false   默认 true
+//   hubCompactK        主会话上下文到多少千 token、又闲着，插件替它压缩一次（hooks/compact.ts）；0 不压   默认 200   0–1000
 import { existsSync, readFileSync } from "node:fs";
 import { HHMM } from "./shared/schedule";
 import { paths, withLock, writeJson } from "./store";
@@ -35,6 +36,7 @@ export interface Config {
   logMaxMB: number;
   refCheckMinutes: number;
   staleDraftHours: number;
+  hubCompactK: number;
   locale: "zh" | "en";
   quietHours: { start: string; end: string } | null;
   digest: { morning: string | null; evening: string | null };
@@ -44,7 +46,7 @@ export interface Config {
 export function defaultConfig(): Config {
   return {
     pollMinutes: 5, firstLookbackHours: 24, missedMinutes: 10, hubDownMinutes: 5, nagMinutes: 30, keepDays: 7, undoSeconds: 5,
-    items: { github: 50, jira: 50 }, slackCatchUpHours: 48, logMaxMB: 10, refCheckMinutes: 10, staleDraftHours: 12,
+    items: { github: 50, jira: 50 }, slackCatchUpHours: 48, logMaxMB: 10, refCheckMinutes: 10, staleDraftHours: 12, hubCompactK: 200,
     locale: "zh", quietHours: null, digest: { morning: null, evening: null }, triage: true,
   };
 }
@@ -53,7 +55,7 @@ export function defaultConfig(): Config {
 const RANGES: Record<string, [number, number]> = {
   pollMinutes: [1, 120], firstLookbackHours: [1, 720], missedMinutes: [1, 1440], hubDownMinutes: [1, 1440], nagMinutes: [5, 1440],
   keepDays: [1, 365], undoSeconds: [0, 60], "items.github": [1, 100], "items.jira": [1, 200], slackCatchUpHours: [0, 168], logMaxMB: [1, 500],
-  refCheckMinutes: [2, 120], staleDraftHours: [1, 168],
+  refCheckMinutes: [2, 120], staleDraftHours: [1, 168], hubCompactK: [0, 1000],
 };
 
 // chief config set 认得的键。
@@ -156,7 +158,7 @@ export function liveConfig(): Config {
 }
 
 // 改了马上生效、不用重启引擎的键。
-export const LIVE_KEYS = ["quietHours", "digest", "locale", "triage"];
+export const LIVE_KEYS = ["quietHours", "digest", "locale", "triage", "hubCompactK"];
 
 // 命令行给的值：能当 JSON 读的（数字、null、对象、带引号的字符串）就当 JSON，否则当字符串（08:30、en）。
 function parseValue(text: string): unknown {

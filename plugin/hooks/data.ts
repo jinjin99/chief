@@ -34,7 +34,7 @@ export async function chiefDir($: Engine): Promise<string> {
   return (await chiefFiles($)).home
 }
 
-async function readJson<T>($: Engine, path: string, fallback: T): Promise<T> {
+export async function readJson<T>($: Engine, path: string, fallback: T): Promise<T> {
   try {
     return JSON.parse(await $.fs.read(path)) as T
   } catch {

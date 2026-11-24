@@ -102,7 +102,9 @@ export async function reply(args: string[]): Promise<void> {
     });
     // 回复按哪条规矩发：引擎按规矩算（和 queue --policy 一样），auto 就可以直接 queue --policy。
     const why = autoReason(r, loadPolicy(), event);
-    process.stdout.write(`${JSON.stringify({ id: r.id, source: r.source, scenario: scenarioOf(event), policy: why === null ? "ask" : "auto", ...(why === "白名单" ? { trusted: true } : {}) })}\n`);
+    // 稿子多长、开头是什么：主会话据此决定要不要打开全文看（工作会话把稿子写在文件里，只给主会话路径）。
+    const size = { lines: body.split("\n").filter((l) => l.trim() !== "").length, chars: body.length, preview: oneLine(body, 60) };
+    process.stdout.write(`${JSON.stringify({ id: r.id, source: r.source, scenario: scenarioOf(event), policy: why === null ? "ask" : "auto", ...(why === "白名单" ? { trusted: true } : {}), ...size })}\n`);
     return;
   }
   // chief reply approve --event N --ref owner/repo#号 [--thing T] [--custom 号]：放一条「approve 这个 PR」进待发出。
