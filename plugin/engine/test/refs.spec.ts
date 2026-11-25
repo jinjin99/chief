@@ -263,6 +263,25 @@ describe("引擎：发到 GitHub 之前再查一次", () => {
     expect(read("replies.json").items[0]).toMatchObject({ status: "sent" });
   });
 
+  it("做事方式 yolo：闸门放行的回复、approve，PR 合了照样拦下、退回", async () => {
+    write("rules.json", { mode: "yolo" });
+    const ev = { id: 1, at: iso(T0), source: "github", kind: "github.pr", title: "acme/shop#12 删 mini", url: "https://github.com/acme/shop/pull/12", from: null, text: "PR acme/shop#12 请你 review", why: ["review"], keys: ["github.com/acme/shop/pull/12"], reply: { ref: "acme/shop#12" } };
+    writeFileSync(join(h, "events.jsonl"), `${JSON.stringify(ev)}\n`);
+    write("state.json", { nextId: 2 });
+    const due = { status: "queued", by: "policy", sendAt: iso(Date.now() - 1000) };
+    write("replies.json", { nextId: 3, items: [
+      { ...ghReply(1, "acme/shop#12"), ...due },
+      { ...ghReply(2, "acme/shop#12"), kind: "approve", body: "", ...due },
+    ] });
+    const { e, sent } = await engine(fakeGitHub({ "acme/shop#12": { state: "MERGED", mergedAt: iso(T0) } }).gql);
+    await e.sendDue();
+    expect(sent).toEqual([]);
+    const [reply, approve] = read("replies.json").items as Reply[];
+    expect(reply).toMatchObject({ status: "pending", prState: { state: "merged" } });
+    expect(approve).toMatchObject({ status: "failed" });
+    expect(approve!.error).toMatch(/PR 已合并/);
+  });
+
   it("规矩直接发的：PR 合了永远退回；PR 开着、不是 GitHub 的照发", async () => {
     const gh = fakeGitHub({ "acme/shop#12": { state: "MERGED", mergedAt: iso(T0) }, "acme/shop#13": { state: "OPEN" } });
     const w = new RefWatch({ gql: () => gh.gql, emit: () => true, log: () => {} });

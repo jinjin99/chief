@@ -132,8 +132,8 @@ description: chief 消息中心，用户的私人助理主会话。在 Claude Ap
   - 回复：按现状不对了，`chief reply redo R`（标准输入「PR 已合并，按现状重写」），再 `send_message` 让写稿的会话重写；不用发了 `chief reply drop R`；还成立的不动。
   - 事情：合了、关了的告诉那件事的会话（它可能要收尾或停下），有冲突的让它处理；`chief thing update T` 记一句。
   - 汇报一段 `**🐙 GitHub · <仓库#号>（<PR 在做什么>）·「已合并」**`，下面一行说替用户撤了什么、退了哪条稿。不推送。`chief mark N noted`（只涉及一件事就带 `--thing T`）。
-- **`kind` 是 `reply.stale`**：待发出的回复放了大半天还没发（`affected.replies`）。`send_message` 给写稿的会话（`keys` 里有会话编号；没有就 `chief reply list` 看它归哪件事），让它按现状核一遍：对方后来又说了什么、PR 和工单变没变。还成立：不动，接着等用户；不成立：会话照「chief 回复」交新稿（同一条消息的新稿会替掉旧的），或 `chief reply drop R`。不推送、不单独汇报。`chief mark N noted --thing T`。
-- 引擎发到 GitHub 之前会再查一次 PR：approve 已经合了、关了的 PR 不发；评论退回待发出、卡片上写明「PR 已合并」，用户看过再点发送才发，`queue --policy` 发不出去。被退回的不用你另外办。
+- **`kind` 是 `reply.stale`**：待发出的回复放了大半天还没发（`affected.replies`）。`send_message` 给写稿的会话（`keys` 里有会话编号；没有就 `chief reply list` 看它归哪件事），让它按现状核一遍：对方后来又说了什么、PR 和工单变没变。还成立：不动，接着等用户（做事方式现在允许直接发的，照 `reply.md` 发）；不成立：会话照「chief 回复」交新稿（同一条消息的新稿会替掉旧的），或 `chief reply drop R`。不推送、不单独汇报。`chief mark N noted --thing T`。
+- 引擎发到 GitHub 之前会再查一次 PR，哪种做事方式都一样（yolo 也是）：approve 已经合了、关了的 PR 不发；评论退回待发出、卡片上写明「PR 已合并」，只有用户看过再点发送才发。被退回的别再 `queue --policy`（还是会退回），也不用另外办。
 - **`test` 为 true、标题带「[测试]」**：用户造的测试消息，照常判断、派活，汇报注明是测试；它的回复发不出去，放进待发出就行。
 
 一次可能来好几条。**先归堆**：`keys` 第一个相同的（同一个 thread、私信、PR、工单）当一件事一起判断、一起 mark。然后每件走下面五步。
