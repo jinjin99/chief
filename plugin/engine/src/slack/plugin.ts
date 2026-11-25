@@ -49,8 +49,8 @@ export interface GabrielClientLike {
   start(): Promise<void>;
   stop(options?: { drainMs?: number }): Promise<void>;
   chat: { send(opts: { channel: string; markdown: string; threadTs?: string; attribution?: SlackAttribution }): Promise<{ channel: string; ts: string }> };
-  // 按编号查人名（查 @ 了谁用）；老的假客户端没有。
-  readonly users?: { resolve(ids: string[]): Promise<Array<{ id: string; name?: string; displayName?: string; handle?: string } | null>> };
+  // 按编号查人（查 @ 了谁的名字、发消息的账号是不是机器人账号用）；老的假客户端没有。
+  readonly users?: { resolve(ids: string[]): Promise<Array<{ id: string; name?: string; displayName?: string; handle?: string; isBot?: boolean } | null>> };
   reactions: { add(opts: { channel: string; ts: string; emoji: string }): Promise<void> };
   // 传图（回复附图用）：传完分享到 channel（有 threadTs 就进那个 thread）。老的假客户端没有。
   readonly files?: { upload(opts: { filename: string; content: Uint8Array; mimeType?: string; channel?: string; threadTs?: string }): Promise<unknown> };
@@ -284,9 +284,10 @@ export class SlackPlugin implements ChannelPlugin {
 
   // ── 收消息 ──
 
-  private async onCreated(evt: GabrielMessageEvent): Promise<void> {
+  private async onCreated(original: GabrielMessageEvent): Promise<void> {
     const ctx = this.context;
     if (!ctx) return;
+    const evt = await this.personOf(original);
     let channel = await this.channelOf(evt.channel);
     // 你在私信里说的话：问清楚这是不是和你自己的私信（那是写给助理的指令）。
     if (evt.origin === "self_other_client" && directOf(channel) === "im" && channel.imUserId === undefined) {
@@ -302,6 +303,26 @@ export class SlackPlugin implements ChannelPlugin {
     if (!ctx) return;
     const result = classifyUpdated({ ...evt, channel: await this.channelOf(evt.channel) }, ctx.threadSeen);
     if (result.ok) await this.deliver(result.message);
+  }
+
+  // 别的 app 拿某个人的用户令牌替他发的（Slack 上的 Claude、同事自己的助理、发版脚本）：Slack 上显示是他本人，
+  // 消息却带着 bot_id，gabriel-slack 收实时消息时只看 bot_id，记成机器人（origin bot、isBot），引擎就不交了。
+  // 查一下发消息的账号：账号本身不是机器人，就当成他本人说的话，名字也换成他的（不用 app 的名字）。
+  // 补收私信走的历史接口本来就按账号认（gabriel-slack 的 senderOf），这里让实时收的和它一致。
+  // 照旧当机器人的：真机器人账号；只有 bot_id、没有用户的（编号不是 U / W 开头）；查不到的（记一行日志，只写位置）；
+  // 你自己的账号经 app 发的（要不要当成你说的话、在和自己的私信里算不算给助理的指令，另说）。
+  private async personOf(evt: GabrielMessageEvent): Promise<GabrielMessageEvent> {
+    const users = this.client?.users;
+    if (!evt.sender.isBot || !users || !/^[UW]/.test(evt.sender.id) || evt.sender.id === this.selfId()) return evt;
+    try {
+      const [account] = await users.resolve([evt.sender.id]);
+      if (account?.isBot !== false) return evt;
+      const name = account.displayName || account.name || account.handle;
+      return { ...evt, origin: evt.origin === "bot" ? "other_user" : evt.origin, sender: { ...evt.sender, isBot: false, ...(name ? { displayName: name } : {}) } };
+    } catch (error) {
+      this.context?.log(`查不到 ${evt.sender.id} 是不是机器人账号，按机器人算（${evt.channel.id}:${evt.ts}）：${error instanceof Error ? error.message.slice(0, 120) : String(error)}`);
+      return evt;
+    }
   }
 
   // 私信的对方是谁：gabriel-slack 的频道信息里没有，问一次 conversations.info，记住（只记编号）。

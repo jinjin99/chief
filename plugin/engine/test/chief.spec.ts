@@ -688,6 +688,84 @@ describe("chief 替你发出去的帖子，别人在下面回复也收", () => {
   });
 });
 
+describe("别的 app 借真人账号发的消息也收", () => {
+  // 同事让自己的助理、Slack 上的 Claude、发版脚本拿他的用户令牌发消息：Slack 上显示是他本人（带个 APP 标记），
+  // 实时推来的消息却带着 bot_id，gabriel-slack 记成 origin bot、isBot。以前引擎把它当机器人，不交、也不留痕迹。
+  const start = async (accounts: Record<string, { isBot: boolean; displayName?: string } | "error">) => {
+    const { SlackPlugin } = await import("../src/slack/plugin");
+    const handlers: Record<string, (evt: unknown) => Promise<void>> = {};
+    const got: InboundMessage[] = [];
+    const logs: string[] = [];
+    const looked: string[] = [];
+    const fake = {
+      selfUserId: "UME1",
+      core: { callWebApi: async () => ({}) },
+      on: (name: string, fn: (...args: never[]) => void) => { handlers[name] = fn as unknown as (evt: unknown) => Promise<void>; },
+      onError: () => {}, start: async () => {}, stop: async () => {},
+      chat: { send: async (opts: { channel: string }) => ({ channel: opts.channel, ts: "9.0" }) },
+      reactions: { add: async () => {} },
+      users: {
+        resolve: async (ids: string[]) => ids.map((id) => {
+          looked.push(id);
+          const a = accounts[id];
+          if (a === "error") throw new Error("users/info 超时");
+          return a ? { id, ...a } : null;
+        }),
+      },
+    };
+    const plugin = new SlackPlugin({ createClient: async () => fake });
+    await plugin.start({ secrets: { cookie_d: "xoxd-x" }, deliver: async (m) => { got.push(m); }, threadSeen: () => false, status: () => {}, log: (l) => logs.push(l) });
+    const dm = { id: "D1", name: "@Dave", isIm: true, isMpim: false, imUserId: "UDAVE" };
+    const created = (ts: string, sender: Record<string, unknown>, origin = "bot") => handlers["message.created"]!({
+      ts, channel: dm, sender, origin, text: "@acme/shop-sdk 1.2.3-beta.1 已发布", markdown: "@acme/shop-sdk 1.2.3-beta.1 已发布",
+      thread: null, isThreadReply: false, isMentioningMe: false, eventId: `D1:${ts}:created`,
+    });
+    return { plugin, got, logs, looked, created };
+  };
+
+  it("私信里同事经 app 发的：账号是真人就当他本人说的话，名字用他的，交给消息中心", async () => {
+    const { eventOfSlack } = await import("../src/engine");
+    const { plugin, got, created } = await start({ UDAVE: { isBot: false, displayName: "Dave" } });
+    // 漏收的那种：同事的账号、app 的名字、带 bot_id。
+    await created("1.0", { id: "UDAVE", displayName: "Release Helper", isBot: true });
+    expect(got).toHaveLength(1);
+    expect(got[0]).toMatchObject({ relevance: "dm", role: "message", sender: { id: "UDAVE", name: "Dave", bot: false } });
+    expect(eventOfSlack(got[0]!, "UME1")).toMatchObject({ from: "Dave", fromId: "UDAVE", why: ["dm"], keys: ["slack:D1:dm"] });
+    await plugin.stop();
+  });
+
+  it("真机器人账号、只有 bot_id 的、你自己账号经 app 发的：照旧当机器人；查不到账号也照旧，但记一行日志", async () => {
+    const { eventOfSlack } = await import("../src/engine");
+    const { plugin, got, logs, looked, created } = await start({ UCIBOT: { isBot: true, displayName: "CI" }, UGONE: "error", UME1: { isBot: false, displayName: "你" } });
+    await created("2.0", { id: "UCIBOT", displayName: "CI", isBot: true });
+    await created("3.0", { id: "B0LEGACY", displayName: "Old Hook", isBot: true });
+    await created("4.0", { id: "UGONE", isBot: true });
+    await created("5.0", { id: "UME1", isBot: true });
+    expect(got.map((m) => m.sender.bot)).toEqual([true, true, true, true]);
+    for (const m of got) expect(eventOfSlack(m, "UME1")).toBeNull();
+    // 只有 bot_id 的、你自己的不查；查不到的写清是哪条，不带原文。
+    expect(looked).toEqual(["UCIBOT", "UGONE"]);
+    expect(logs.filter((l) => l.includes("UGONE"))).toEqual([expect.stringContaining("D1:4.0")]);
+    expect(logs.join("\n")).not.toContain("已发布");
+    // 本来就是人发的（没有 bot_id）：不多查一次。
+    await created("6.0", { id: "UDAVE", displayName: "Dave", isBot: false }, "other_user");
+    expect(looked).toEqual(["UCIBOT", "UGONE"]);
+    expect(got[4]).toMatchObject({ relevance: "dm", sender: { name: "Dave", bot: false } });
+    await plugin.stop();
+  });
+
+  it("本来会交、因为是机器人才没交的：引擎记一行日志（只写位置，不写原文）", async () => {
+    const { skippedBotNote } = await import("../src/engine");
+    const dm = slackMsg({ relevance: "dm", sender: { id: "UCIBOT", name: "机器人", bot: true }, replyTarget: { channel: "D1", ts: "2.0" } });
+    expect(skippedBotNote(dm)).toBe("机器人账号 UCIBOT 发的（dm），没交给消息中心：D1:2.0");
+    expect(skippedBotNote(dm)).not.toContain("github");
+    // 本来就不交的（和你无关、改和删、你自己说的）、人发的：不记。
+    expect(skippedBotNote(slackMsg({ relevance: null, sender: { id: "UCIBOT", name: "机器人", bot: true } }))).toBeNull();
+    expect(skippedBotNote(slackMsg({ kind: "message.edited", sender: { id: "UCIBOT", name: "机器人", bot: true } }))).toBeNull();
+    expect(skippedBotNote(slackMsg())).toBeNull();
+  });
+});
+
 describe("Slack 回复放哪", () => {
   it("私信直接回、频道回 thread、对方在 thread 里就回 thread、稿子能指定", async () => {
     const { placementOf, defaultPolicy } = await import("../src/store");

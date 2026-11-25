@@ -207,6 +207,13 @@ export function eventOfSlack(m: InboundMessage, selfId: string | null = null): O
   };
 }
 
+// 本来会交给消息中心、只因为是机器人发的才没交的（私信、@你、你在的 thread 里的新消息）：写一行日志，查漏收时有痕迹。
+// 只写账号编号和消息位置，不写原文、不写名字。别的不交的（和你无关、改和删、你自己说的）不记。
+export function skippedBotNote(m: InboundMessage): string | null {
+  if (m.kind !== "message.received" || m.role !== "message" || m.relevance === null || !m.sender.bot) return null;
+  return `机器人账号 ${m.sender.id} 发的（${m.relevance}），没交给消息中心：${m.replyTarget.channel}:${m.replyTarget.ts}`;
+}
+
 // 每天汇总的事件：不是外部来源（source 是 chief），主会话看到 kind 是 digest 就去 chief digest 拿材料。
 export function digestEvent(slot: keyof DigestTimes, date: string, now: Date): Omit<ChiefEvent, "id"> {
   return {
@@ -523,6 +530,8 @@ export class Engine {
         const e = eventOfSlack(m, this.slack?.selfId() ?? null);
         if (e) this.emit(e, m.deliveryId);
         else if (!this.state.seen.includes(m.deliveryId)) {
+          const skipped = skippedBotNote(m);
+          if (skipped) log(`[slack] ${skipped}`);
           this.state.seen.push(m.deliveryId);
           this.persist();
         }
