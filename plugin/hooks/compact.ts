@@ -3,7 +3,7 @@
 // 不管谁触发的压缩（插件、自动、你手敲），在主会话里都告诉总结器哪些不用留：事情、问题、规矩、判断都在 chief 的文件里。
 import type { EngineInterface as Engine } from 'claude-code'
 
-import { chiefFiles, readJson } from './data'
+import { chiefDir, chiefFiles, readJson } from './data'
 
 export const HUB_COMPACT = [
   '这是 chief 消息中心（主会话）。事情、问题、回复、规矩、判断记录都存在 chief 的文件里，随时能用 chief 命令查，摘要里不要重复。',
@@ -22,17 +22,12 @@ const COOLDOWN_MS = 30 * 60_000
 const DEFAULT_K = 200
 
 let started = false
-let running = false
-let lastTurnEnd = Date.now()
+// 主会话最后一次有动静（回合开始、调模型、回合结束）的时间：闲够 2 分钟才压。
+let lastActivity = Date.now()
 let lastCompact = 0
 
-export function turnStarted() {
-  running = true
-}
-
-export function turnEnded() {
-  running = false
-  lastTurnEnd = Date.now()
+export function turnActivity() {
+  lastActivity = Date.now()
 }
 
 // 主会话压缩时，在总结器的说明后面加上这一段。
@@ -55,15 +50,35 @@ export function startCompactWatch($: Engine) {
 
 async function maybeCompact($: Engine) {
   const now = Date.now()
-  if (running || now - lastTurnEnd < IDLE_MS || now - lastCompact < COOLDOWN_MS) return
+  if (now - lastActivity < IDLE_MS) return
+  if (now - lastCompact < COOLDOWN_MS) return
+  let context: number | null = null
   try {
     const limit = await compactAt($)
     if (limit === 0) return
-    const { context } = await $.session.usage()
-    if ((context.tokens ?? 0) < limit) return
+    context = (await $.session.usage()).context.tokens ?? null
+    if ((context ?? 0) < limit) return
     lastCompact = now
-    await $.session.compact({ instructions: HUB_COMPACT })
+    try {
+      const { skip } = await $.session.compact({ instructions: HUB_COMPACT })
+      await note($, { at: new Date(now).toISOString(), context, result: skip ? 'skipped' : 'compacted' })
+    } catch {
+      // Claude App 的会话（SDK）里插件不能直接压，只能像你一样发一条 /compact：等它闲下来跑，说明在 session.compact 里加上。
+      await $.prompt.submit({ text: '/compact' })
+      await note($, { at: new Date(now).toISOString(), context, result: 'sent /compact' })
+    }
+  } catch (error) {
+    // 正好有一轮在跑、或者压缩没成：记下原因，下一分钟再看（不算冷却）。
+    lastCompact = 0
+    await note($, { at: new Date(now).toISOString(), context, result: 'failed', error: error instanceof Error ? error.message.slice(0, 200) : String(error) })
+  }
+}
+
+// 最近一次试着压的结果写进 chief 数据目录的 compact.json：没压成能看出为什么。
+async function note($: Engine, entry: { at: string; context: number | null; result: string; error?: string }) {
+  try {
+    await $.fs.write(`${await chiefDir($)}/compact.json`, `${JSON.stringify(entry)}\n`)
   } catch {
-    // 正好有一轮在跑、或者压缩没成：下一分钟再看。
+    // 写不了就算了。
   }
 }
