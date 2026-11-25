@@ -2,7 +2,7 @@
 // 元素来自当前界面（App / 终端）的元素表；App 才有的（输入框、下拉、Markdown、图）没有时退回纯文字。
 import type { EngineInterface as Engine } from 'claude-code'
 
-import type { DecisionRow, ReplyRow, ThingRow } from '../types'
+import type { DecisionRow, ReplyRow, Snapshot, ThingRow } from '../types'
 import { annotate, toggle } from './actions'
 import { L, t } from './i18n'
 
@@ -73,6 +73,18 @@ export function wakeLabel(iso: string): string {
 export function whatOf(r: ReplyRow): string {
   const w = t().reply
   return r.kind === 'approve' ? w.approve(r.target.ref ?? '') : r.kind === 'message' ? w.message(r.context.who ?? r.target.to ?? '') : w.reply(r.context.who ?? r.context.where)
+}
+
+// 卡片上这一条（问题 a<号>、回复 r<号>，见 refs.json 的 links）提到的 PR 里不正常的：已合并、已关闭、有冲突，一个一句。好好开着的不说。
+export function prFlags(s: Pick<Snapshot, 'refs'>, key: string, skip?: string): string[] {
+  const w = t().refs
+  return (s.refs?.links?.[key] ?? []).flatMap(pr => {
+    const p = s.refs.prs?.[pr]
+    if (!p || pr === skip) return []
+    if (p.state === 'merged') return [w.merged(pr, ago(p.mergedAt))]
+    if (p.state === 'closed') return [w.closed(pr, ago(p.closedAt))]
+    return p.conflict ? [w.conflict(pr)] : []
+  })
 }
 
 // 问题挂着的那条回复：回谁、说什么、现在发没发（不显示 chief 的回复号，用户看不懂）。

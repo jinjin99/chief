@@ -5,7 +5,7 @@ import { DEFAULT_PLACEMENT, DEFAULT_SIGNATURE, placementOf } from '../../engine/
 import type { ReplyRow, Snapshot } from '../../types'
 import { act, openImage, redo, send, setEdit, toggle } from '../actions'
 import { sourceName, t } from '../i18n'
-import { md, short, whatOf, type Els } from '../ui'
+import { ago, md, prFlags, short, whatOf, type Els } from '../ui'
 
 export function replyCard($: Engine, ui: Els, s: Snapshot, edit: Record<string, string>, opened: string[], r: ReplyRow) {
   const { Box, Text, Button } = ui
@@ -21,6 +21,13 @@ export function replyCard($: Engine, ui: Els, s: Snapshot, edit: Record<string, 
   const more = opened.includes(moreKey)
   const body = edit[String(r.id)] ?? r.body
   const sign = s.policy?.signature ?? DEFAULT_SIGNATURE
+  // 稿子写了多久：放久了（staleDraftHours）变黄，对方、PR 可能都变了。
+  const old = Date.now() - Date.parse(r.at) >= s.staleDraftHours * 3600_000
+  // 要去的 PR 不正常了：发之前查到合了、关了退回来的先说，其余按引擎最近一次查的。
+  const flags = [
+    ...(r.prState ? [t().refs.bounced(r.prState.ref, r.prState.state === 'merged')] : []),
+    ...prFlags(s, `r${r.id}`, r.prState?.ref),
+  ]
   // 一行说清：哪来的、发到哪（属于哪件事看卡片标题）。
   const meta = [
     `${sourceName(r.source)} · ${short(r.context.where, 30)}`,
@@ -28,9 +35,10 @@ export function replyCard($: Engine, ui: Els, s: Snapshot, edit: Record<string, 
   ].filter(Boolean).join(' · ')
   return (
     <Box key={`r${r.id}`} flexDirection="column" gap="xs" marginTop="xs">
-      <Text wrap="wrap"><Text color={r.status === 'failed' ? 'error' : undefined}>✉ </Text><Text weight="semibold">{approve ? t().reply.approve(r.target.ref ?? '') : r.kind === 'message' ? t().reply.message(who) : t().reply.reply(who)}</Text><Text size="caption" dimColor>{t().gap}{meta}</Text></Text>
+      <Text wrap="wrap"><Text color={r.status === 'failed' ? 'error' : undefined}>✉ </Text><Text weight="semibold">{approve ? t().reply.approve(r.target.ref ?? '') : r.kind === 'message' ? t().reply.message(who) : t().reply.reply(who)}</Text><Text size="caption" dimColor>{t().gap}{meta}</Text><Text size="caption" color={old ? 'warning' : undefined} dimColor={!old}>{' · '}{t().refs.written(ago(r.at))}</Text></Text>
       {r.context.said !== '' && <Text size="footnote" dimColor wrap="truncate-end">{short(r.context.who ?? w.them, 16)}{t().colon}{short(r.context.said, 160)}</Text>}
       {r.status === 'failed' && <Text size="footnote" color="error" wrap="wrap">{w.notSent(r.error ?? t().noReason)}</Text>}
+      {flags.map((f, i) => <Text key={`pf${r.id}-${i}`} size="footnote" color="warning" wrap="wrap">{f}</Text>)}
 
       {!approve && (editing && 'Input' in ui
         ? (

@@ -4,7 +4,7 @@ import type { EngineInterface as Engine } from 'claude-code'
 
 import { localeOf } from '../engine/src/shared/i18n'
 import { defaultHomeOf, layoutOf, topOf, type Layout } from '../engine/src/shared/paths'
-import type { AskRow, DecisionRow, HubUsage, PolicyFile, ReplyRow, Reviews, Snapshot, ThingRow, UndoRow } from '../types'
+import type { AskRow, DecisionRow, HubUsage, PolicyFile, RefsFile, ReplyRow, Reviews, Snapshot, ThingRow, UndoRow } from '../types'
 import { setLocale } from './i18n'
 
 // 面板的状态都在 PluginState['chief'] 里（types/index.d.ts）；引擎要求每个文件用到哪份就在本文件里声明哪份。
@@ -58,7 +58,7 @@ async function readLines<T>($: Engine, path: string): Promise<T[]> {
 
 export async function refresh($: Engine) {
   const f = await chiefFiles($)
-  const [alive, engine, state, dispatch, things, replies, decisions, reviews, policy, sources, activity, evals, people, hubUsage, undo, settings] = await Promise.all([
+  const [alive, engine, state, dispatch, things, replies, decisions, reviews, policy, sources, activity, evals, people, hubUsage, undo, settings, refs] = await Promise.all([
     readJson<{ at?: string; stopped?: boolean }>($, f.alive, {}),
     readJson<{ at?: string; health?: Snapshot['health'] }>($, f.engineAlive, {}),
     readJson<{ nextId?: number }>($, f.state, {}),
@@ -74,8 +74,9 @@ export async function refresh($: Engine) {
     readJson<Record<string, string>>($, f.people, {}),
     readJson<HubUsage>($, f.hubUsage, { days: {} }),
     readJson<{ items?: UndoRow[] }>($, f.undo, {}),
-    // 界面语言（chief config set locale en）：只看这一项，别的设置是引擎的。
-    readJson<{ locale?: unknown }>($, f.config, {}),
+    // 界面语言（chief config set locale en）、稿子放多久算久：只看这两项，别的设置是引擎的。
+    readJson<{ locale?: unknown; staleDraftHours?: unknown }>($, f.config, {}),
+    readJson<Partial<RefsFile>>($, f.refs, {}),
   ])
   const locale = localeOf(settings.locale)
   setLocale(locale)
@@ -111,6 +112,8 @@ export async function refresh($: Engine) {
     locale,
     reread: pv !== null && readAt !== pv,
     hubMode: ((activity as Record<string, unknown>)._hub as { permissionMode?: string | null } | undefined)?.permissionMode ?? null,
+    refs: { prs: refs.prs ?? {}, links: refs.links ?? {} },
+    staleDraftHours: typeof settings.staleDraftHours === 'number' && Number.isFinite(settings.staleDraftHours) ? Math.min(168, Math.max(1, settings.staleDraftHours)) : 12,
   }
   await update($, snap, () => next)
 }

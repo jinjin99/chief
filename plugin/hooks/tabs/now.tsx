@@ -9,7 +9,7 @@ import { ackKeyAlerts, answerAll, answerAsk, decideProposal, dismissAsk, engineD
 import { markReread } from '../data'
 import { inboxOf, type Card, type SysItem } from '../inbox'
 import { sourceName, t } from '../i18n'
-import { RELOAD_SKILL, ago, dueLabel, listify, replyGist, short, splitAsk, startOfToday, whatOf, type Els } from '../ui'
+import { RELOAD_SKILL, ago, dueLabel, listify, prFlags, replyGist, short, splitAsk, startOfToday, whatOf, type Els } from '../ui'
 import { replyCard, sendingRow } from './outbox'
 
 export function nowTab($: Engine, ui: Els, s: Snapshot, opened: string[] = [], edit: Record<string, string> = {}) {
@@ -62,6 +62,8 @@ export function nowTab($: Engine, ui: Els, s: Snapshot, opened: string[] = [], e
         {context !== '' && <Text size="footnote" dimColor wrap="wrap">{context}</Text>}
         {q.suggest !== '' && <Text size="footnote" wrap="wrap"><Text dimColor>{w.suggest}{t().gap}</Text>{listify(q.suggest).replace(/\n\n/g, '\n')}</Text>}
         {linked && <Text size="footnote" dimColor wrap="wrap">{w.linked(replyGist(linked))}</Text>}
+        {/* 问的这件事提到的 PR 已经合了、关了、有冲突：问题可能不成立了（主会话收到 ref.changed 会去撤）。 */}
+        {prFlags(s, `a${q.id}`).map((f, i) => <Text key={`pf${q.id}-${i}`} size="footnote" color="warning" wrap="wrap">{f}</Text>)}
         <Box flexDirection="row" gap="sm" alignItems="center" flexWrap="wrap">
           {q.suggest !== '' && (
             <Button key={`ok${q.id}`} variant="primary" onPress={() => answerAsk($, q.id, '照建议办', w.ok, `chief：问题 #${q.id} 照建议办`)}>{w.ok}</Button>

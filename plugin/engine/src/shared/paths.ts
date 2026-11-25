@@ -49,6 +49,8 @@ const DATA = {
   held: "held.json",
   // 能撤回的操作：不做了、只记下 / 忽略、跳过积下的（见 undo.ts）。
   undo: "undo.json",
+  // 开着的问题、待发出的回复、进行中的事情提到的 PR 现在什么样（见 refs.ts）：面板在卡片上标「已合并」「有冲突」。
+  refs: "refs.json",
 } as const;
 
 // 放在 top 的：你的规矩、可调的数字和开关（见 config.ts）、chief export 导出的备份。
