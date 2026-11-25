@@ -63,9 +63,9 @@ async function maybeCompact($: Engine) {
       const { skip } = await $.session.compact({ instructions: HUB_COMPACT })
       await note($, { at: new Date(now).toISOString(), context, result: skip ? 'skipped' : 'compacted' })
     } catch {
-      // Claude App 的会话（SDK）里插件不能直接压，只能像你一样发一条 /compact：等它闲下来跑，说明在 session.compact 里加上。
-      await $.prompt.submit({ text: '/compact' })
-      await note($, { at: new Date(now).toISOString(), context, result: 'sent /compact' })
+      // Claude App 的会话（SDK）里插件不能直接压：像你敲 /compact 一样跑这个命令，等它闲下来跑，说明在 session.compact 里加上。
+      await $.command.run({ command: 'compact', args: '' })
+      await note($, { at: new Date(now).toISOString(), context, result: 'ran /compact' })
     }
   } catch (error) {
     // 正好有一轮在跑、或者压缩没成：记下原因，下一分钟再看（不算冷却）。
