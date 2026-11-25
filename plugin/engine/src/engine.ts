@@ -22,7 +22,7 @@ import { SlackPlugin, SLACK_COOKIE_D, describeSendError, sentThreadKey, type Sla
 import type { ChannelStatus, InboundMessage } from "./slack/types";
 import { DESCRIPTORS, SOURCES, descriptorOf } from "./sources/registry";
 import type { Source, SourceItem } from "./sources/types";
-import { appendEvent, ensureHome, loadCorrupt, loadDispatch, loadEnabled, readEvents, readJson, loadPolicy, loadState, placementOf, paths, saveState, updateReplies, withLock, writeJson, type Enabled, type EngineState, type ChiefEvent, type Reply, type SourceHealth } from "./store";
+import { appendEvent, ensureHome, loadCorrupt, loadDispatch, loadEnabled, readEvents, readJson, loadPolicy, loadState, loadThings, placementOf, paths, saveState, updateReplies, withLock, writeJson, type Enabled, type EngineState, type ChiefEvent, type Reply, type SourceHealth } from "./store";
 
 // 拉外部来源的间隔、第一次连上往回看多久：config.json 的 pollMinutes（默认 5 分钟）、firstLookbackHours（默认一天）。
 const pollMs = () => config().pollMinutes * 60_000;
@@ -262,6 +262,8 @@ export class Engine {
   private lastHubNag = 0;
   private slackDead = false;
   private sessionWatcher: FSWatcher | null = null;
+  // 见过的「要你定」。null = 引擎刚起来、还没看过一遍：已有的只记下不弹。
+  private knownAsks: Set<number> | null = null;
 
   constructor(private readonly deps: EngineDeps = {}) {}
 
@@ -360,10 +362,22 @@ export class Engine {
     }
   }
 
+  // 工作会话自己 chief ask add 的「要你定」主会话不知道：新出现的弹个通知叫你看面板，每条只弹一次。测试直接调。
+  notifyNewAsks(): void {
+    const open = loadThings().asks.filter((a) => a.status === "open");
+    if (this.knownAsks !== null) for (const a of open) if (!this.knownAsks.has(a.id)) (this.deps.notify ?? say)(msg().newAskTitle, a.question);
+    this.knownAsks = new Set(open.map((a) => a.id));
+  }
+
   // 每分钟对一次账：交出去的消息主会话有没有判断、主会话还在不在听。消息交出去不等于被处理了，这里兜底。
   private checkHealth(): void {
     this.rotateLog(config().logMaxMB * 1024 * 1024);
     this.digestTick();
+    try {
+      this.notifyNewAsks();
+    } catch (error) {
+      log(`查新的「要你定」没成：${error instanceof Error ? error.message : String(error)}`);
+    }
     try {
       const n = flushHeld();
       if (n > 0) log(`免打扰过了，攒下的 ${n} 条提醒合成一条弹了`);

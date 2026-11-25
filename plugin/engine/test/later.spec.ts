@@ -301,3 +301,31 @@ describe("找以前的事", () => {
     expect(snippetOf("没有", "payment")).toBeNull();
   });
 });
+
+describe("新的「要你定」弹通知", () => {
+  it("首轮已有的不弹；后来新增的弹一次；回答后不再弹", async () => {
+    const h = home();
+    chief(h, "在压测", "thing", "add", "--title", "PROJ-123 压测");
+    const ask = (q: string) => chief(h, JSON.stringify({ question: q, suggest: "好" }), "ask", "add", "--thing", "1").trim();
+    ask("旧问题？");
+    const before = process.env.CHIEF_HOME;
+    process.env.CHIEF_HOME = h;
+    try {
+      const { Engine } = await import("../src/engine");
+      const notes: string[] = [];
+      const e = new Engine({ notify: (title, body) => void notes.push(`${title}｜${body}`) });
+      e.notifyNewAsks();
+      expect(notes).toEqual([]);
+      const id = ask("先上 2.0 吗？");
+      e.notifyNewAsks();
+      e.notifyNewAsks();
+      expect(notes).toEqual(["chief · 有事要你定｜先上 2.0 吗？"]);
+      chief(h, "上", "ask", "answer", id);
+      e.notifyNewAsks();
+      expect(notes).toHaveLength(1);
+    } finally {
+      if (before === undefined) delete process.env.CHIEF_HOME;
+      else process.env.CHIEF_HOME = before;
+    }
+  });
+});

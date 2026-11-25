@@ -109,6 +109,7 @@ Engine settings live in `~/chief/config.json`. `chief config` lists every settin
 
 These are also on the Setup page and take effect immediately:
 
+- **New decisions**: when a work session registers a new decision with `chief ask add`, the engine pops a notification (within a minute) telling you to check the panel; each one notifies once, and ones that already exist when the engine starts do not. Quiet hours hold it like any other notification.
 - **Language** (`locale`, `"zh"` or `"en"`, default `"zh"`): `chief config set locale en`. Panel, engine notifications and how the hub talks to you.
 - **Quiet hours** (`quietHours`, e.g. `{"start":"22:00","end":"08:00"}`, may cross midnight): the engine holds its notifications and the hub holds its pushes; they go into the next digest, and when quiet hours end the held engine notifications pop up as one. A broken data file or a changed confirm key still notifies; things you marked urgent or due during quiet hours still get pushed. Replies the rules allow to send directly still go out (quiet hours are about not disturbing you, not about ignoring others). `chief quiet` shows whether it is quiet now.
 - **Daily digest** (`digest.morning`, `digest.evening`, `"08:30"` or `null`, both off by default): at that time the hub writes up what is waiting on you, your open decisions, the outbox, what changed and notifications held during quiet hours, in the hub session. If the Mac slept through the time it catches up within 3 hours, otherwise skips; restarts do not repeat it. `chief digest` prints the raw material.
