@@ -306,6 +306,9 @@ export class JiraSource implements Source {
         },
         mine,
         asks,
+        // 最后评论的那个别人；没有人评论（新指派）就是报单的人。
+        from: others.at(-1)?.author?.displayName ?? f.reporter?.displayName ?? null,
+        speakers: [...new Set([f.reporter?.displayName, ...others.map((c) => c.author?.displayName)].filter((x): x is string => !!x))],
       });
     }
     return items;

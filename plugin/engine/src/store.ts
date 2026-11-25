@@ -325,8 +325,8 @@ function samePerson(entry: string, from: string | null | undefined, fromId: stri
 }
 
 // 这条消息在不在「一定问我」名单里：说话的人（编号或完整显示名），或者所在的对话（频道 / 私信编号）。
-export function mustAsk(list: readonly string[], event: Pick<ChiefEvent, "from" | "fromId" | "reply">): boolean {
-  return list.some((t) => samePerson(t, event.from, event.fromId) || (isSlackId(t.trim()) && event.reply.channel === t.trim()));
+export function mustAsk(list: readonly string[], event: Pick<ChiefEvent, "from" | "fromId" | "reply" | "speakers">): boolean {
+  return list.some((t) => samePerson(t, event.from, event.fromId) || (event.speakers ?? []).some((s) => samePerson(t, s, undefined)) || (isSlackId(t.trim()) && event.reply.channel === t.trim()));
 }
 
 // 这个人在不在白名单里。

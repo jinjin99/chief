@@ -210,6 +210,9 @@ export class GitHubSource implements Source {
         },
         mine,
         asks,
+        // 请你 review 的是 PR 作者；别的情况是最后说话的那个别人，没有别人说话就是作者。
+        from: (asks.includes("review") ? it.user?.login : others.at(-1)?.user?.login ?? it.user?.login) ?? null,
+        speakers: [...new Set([it.user?.login, ...others.map((c) => c.user?.login)].filter((x): x is string => !!x))],
       });
     }
     return items;

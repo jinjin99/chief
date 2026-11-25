@@ -25,6 +25,10 @@ export interface SourceItem {
   // 你开的 PR 被 approve 了（approved）、被要求修改（changes）。
   // 没有就是只变了状态，或者只是你自己的动作（你开的、你评论的）——这种交给代码对账，不一定要跑一轮主会话。
   asks?: Ask[];
+  // 是谁在找你（GitHub 的登录名、Jira 的显示名）：「一定问我」名单按它拦。来源认不出人就不填。
+  from?: string | null;
+  // 这条动态里说话的所有人加上作者：from 只记一个，名单要对每一个。
+  speakers?: string[];
 }
 
 export type Ask = "review" | "assigned" | "mention" | "comment" | "approved" | "changes";

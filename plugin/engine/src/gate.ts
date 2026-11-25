@@ -61,7 +61,8 @@ export function autoReason(r: Reply, pol: Policy, event: ChiefEvent | null): str
   // 固定回复：一字不差才算，前后多一个字都不行。
   const body = r.body.trim();
   if (body !== "" && pol.quick.some((q) => q.trim() === body)) return "固定回复";
-  if (isTrusted(pol.trusted, event.from, event.fromId)) return "白名单";
+  // 白名单只管 Slack：GitHub 登录名、Jira 显示名和 Slack 名字撞了，不能当成同一个人。
+  if (event.source === "slack" && isTrusted(pol.trusted, event.from, event.fromId)) return "白名单";
   if (r.custom !== undefined) {
     const c = pol.custom.find((x) => x.id === r.custom);
     return c?.reply === "auto" ? `你加的情况 custom:${c.id}` : null;

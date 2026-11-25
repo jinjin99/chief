@@ -176,7 +176,7 @@ export function eventOfItem(source: SourceId, item: SourceItem): Omit<ChiefEvent
   const to = SOURCES[source].event?.(item);
   if (!to) return null;
   return {
-    at: item.at, source, kind: item.kind, title: item.title, url: item.url, from: null,
+    at: item.at, source, kind: item.kind, title: item.title, url: item.url, from: item.from ?? null, ...(item.speakers?.length ? { speakers: item.speakers } : {}),
     text: item.summary, why: item.asks, keys: [...new Set([to.key, ...keysOf(`${item.title} ${item.summary}`)])], reply: to.reply,
   };
 }

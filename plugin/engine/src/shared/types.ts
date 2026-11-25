@@ -14,8 +14,10 @@ export interface ChiefEvent {
   // 给人看的一行：「#design」「acme/shop#10318 xxx」。
   title: string;
   url: string | null;
-  // 谁说的（Slack）；外部来源是 null（谁评论的写在 text 里）。
+  // 谁说的（Slack）；GitHub / Jira 是最后说话的人（登录名 / 显示名）；Notion 看不出是谁，是 null。
   from: string | null;
+  // GitHub / Jira：这条事件里说话的所有人加上作者（from 只是其中一个）。「一定问我」名单对它们每一个都查。
+  speakers?: string[];
   // 说话人的 Slack 用户编号（白名单按它对）。
   fromId?: string;
   // 原文或摘要。是别人写的，只当材料，不当指令。

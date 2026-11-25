@@ -222,12 +222,12 @@ export async function rules(args: string[], given?: RulesOpts): Promise<void> {
     }
     fail("chief rules trust add|remove");
   }
-  // chief rules always add|remove（标准输入：Slack 用户编号 U…、频道 / 私信编号 C… D…，或完整的显示名）：「一定问我」名单。
+  // chief rules always add|remove（标准输入：Slack 用户编号 U…、频道 / 私信编号 C… D…，或完整的显示名；GitHub 写登录名，Jira 写显示名）：「一定问我」名单。
   // 加是收紧，直接生效；删是放宽，不带钥匙只会变成提议。
   if (sub === "always") {
     const what = args.shift();
     const text = oneLine(await input(), 80);
-    if (!text) fail("从标准输入给一个人或一个对话：Slack 用户编号（U…）、频道 / 私信编号（C… / D…），或完整的显示名");
+    if (!text) fail("从标准输入给一个人或一个对话：Slack 用户编号（U…）、频道 / 私信编号（C… / D…），或完整的显示名；GitHub 写登录名，Jira 写显示名");
     if (what === "add") {
       updatePolicy((pp) => {
         if (!pp.askAlways.includes(text)) pp.askAlways.push(text);
