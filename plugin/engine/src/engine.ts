@@ -16,6 +16,7 @@ import { scrubTokens } from "./scrub";
 import { wakeDue } from "./snooze";
 import { KeychainStore, type SecretStore } from "./secrets";
 import { keysOf } from "./keys";
+import { refreshUsage } from "./usage";
 import { DATA_HEALTH } from "./shared/rules";
 import { DIGEST_LABELS, dueDigests, type DigestTimes } from "./shared/schedule";
 import { SOURCE_LABELS, type SourceId } from "./shared/sources";
@@ -63,6 +64,8 @@ const HEALTH_MS = 60_000;
 const ARCHIVE_MS = 24 * 3600_000;
 // 稍后再说的事情多久看一次到点没有。
 const WAKE_MS = 60_000;
+// 多久算一次主会话用掉的额度（读本机会话记录新写的部分，见 usage.ts）。
+const USAGE_MS = 10 * 60_000;
 
 // 漏掉的消息：交出去（firstSeen 记着引擎第一次看到它没判断的时间）过了 missedMs 还没判断。演练消息和提醒本身不算。
 export function missedEvents(events: readonly ChiefEvent[], handled: Record<string, unknown>, firstSeen: Map<number, number>, now: number, after = missedMs()): ChiefEvent[] {
@@ -266,6 +269,7 @@ export class Engine {
   private healthTimer: NodeJS.Timeout | null = null;
   private archiveTimer: NodeJS.Timeout | null = null;
   private wakeTimer: NodeJS.Timeout | null = null;
+  private usageTimer: NodeJS.Timeout | null = null;
   // 开着的问题、待发出的回复、进行中的事情提到的 PR 变没变，稿子放久了没有（见 refs.ts）。
   private readonly refs = new RefWatch({
     gql: () => (this.enabled.github ? this.deps.gql ?? ghGql() : null),
@@ -342,6 +346,12 @@ export class Engine {
     // 稍后再说的事情到点了就叫醒（起来时先看一次：关机时到点的也补上）。
     this.wakeSnoozed();
     this.wakeTimer = setInterval(() => this.wakeSnoozed(), WAKE_MS);
+    // 主会话用掉的额度：起来一分钟后先算一次（第一次要把两周的记录都读一遍），之后每 10 分钟。
+    const usage = () => void refreshUsage().catch((error) => log(`算额度没成：${error instanceof Error ? error.message : String(error)}`));
+    this.usageTimer = setTimeout(() => {
+      usage();
+      this.usageTimer = setInterval(usage, USAGE_MS);
+    }, 60_000);
   }
 
   // 叫醒到点的事情：弹个通知，再交给主会话一条 thing.woke（它重新跟进、告诉你）。测试直接调。
@@ -460,6 +470,7 @@ export class Engine {
     if (this.healthTimer) clearInterval(this.healthTimer);
     if (this.archiveTimer) clearInterval(this.archiveTimer);
     if (this.wakeTimer) clearInterval(this.wakeTimer);
+    if (this.usageTimer) clearInterval(this.usageTimer);
     this.sessionWatcher?.close();
     this.abort.abort();
     await this.slack?.stop();

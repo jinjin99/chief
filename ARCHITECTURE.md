@@ -92,6 +92,8 @@ Notion ─────┤                                                       
 | `data/logs/` | 引擎 | 日志（不写密钥和消息原文） |
 | `data/triage.json` | `chief triage` | 分诊：插件最近一次来看的时间，每条扣住的事件谁领了、要不要交给主会话 |
 | `data/held.json` | 引擎 | 免打扰时没弹的通知（免打扰一过合成一条弹，也进汇总） |
+| `data/hub-usage.json` | 面板插件 | 主会话每天调了几次模型，账号两个额度窗口的百分比读数 |
+| `data/usage.json`、`data/usage-scan.json` | 引擎（`chief usage`） | 主会话占本机所有会话用量的份额、分到它头上的额度；读本机 Claude 会话记录（`~/.claude/projects`）读到哪了。只读 token 数和时间，不留对话内容 |
 | `exports/` | `chief export` | 导出的备份（不含密钥；`uninstall --purge` 不删它） |
 
 ## 加一个来源

@@ -165,6 +165,7 @@ export type Snapshot = {
   dryDecisions: DecisionRow[]
   // 主会话用掉的订阅额度（hub-usage.json）。
   hubUsage: HubUsage
+  usage: Usage
   // 「以你的名义发」的钥匙被清过 / 换过、你还没在面板上点知道了的（key-log.jsonl）。
   keyAlerts: { at: string; what: 'reset' | 'set' }[]
   // 最近做的、能撤回的（新的在前）。
@@ -177,15 +178,24 @@ export type Snapshot = {
   staleDraftHours: number
 }
 
-// 主会话一天用掉的额度（hooks/usage.ts 记）：five / week 是 5 小时、每周窗口涨了几个百分点（量到的加估的），
-// weight 是 token 按价钱折算的份量，measured 是其中量到的那部分。
-export type UsageDay = { calls: number; weight: number; five: number; week: number; measured: { weight: number; five: number; week: number } }
+// 主会话一天调了几次模型、按价钱折算的份量（hooks/usage.ts 记）；readings 是账号两个窗口的百分比读数（变了才记），
+// 引擎拿它和本机所有会话的用量算主会话分到多少（见 engine/src/usage.ts、Usage）。
+export type UsageDay = { calls: number; weight: number }
+export type UsageReading = { at: number; five: number | null; week: number | null }
 export type HubUsage = {
   days: Record<string, UsageDay>
-  // 量到的平均速度：每份 token 涨几个百分点（估隔得久的那次用）。
-  rate?: { five: number; week: number }
+  readings?: UsageReading[]
   // 最近一次读数：上下文多长、整个账号两个窗口用了多少、什么时候重置。
   now?: { at: string; context: number | null; window: number; five: number | null; week: number | null; fiveReset?: string; weekReset?: string }
+}
+
+// 引擎算的（usage.json）：每天主会话占本机所有会话用量的份额，账号两个窗口涨了几个点、分给主会话几个点；
+// weights 是各种 token 折成份量的比例，fitted 说明是用你账号的数据拟合的（否则是社区实测的默认值）。
+export type Usage = {
+  at?: string
+  fitted?: boolean
+  weights?: { input: number; output: number; cacheWrite: number; cacheRead: number }
+  days: Record<string, { share: number | null; accountFive: number; accountWeek: number; five: number; week: number }>
 }
 
 export type Tab = 'now' | 'outbox' | 'things' | 'policy' | 'eval' | 'setup'
@@ -250,8 +260,6 @@ declare module 'claude-code' {
       hub: boolean
       // 进度页上搜以前的事：搜的字和结果。
       found: { q: string; hits: SearchHit[]; error?: string } | null
-      // 本会话上一次调完模型读到的额度百分比。
-      reading: { at: number; five: number | null; week: number | null } | null
     }
   }
 }

@@ -409,7 +409,7 @@ export function setupTab($: Engine, ui: Els, st: Setup, s: Snapshot | null, logT
           {buttons(<Button key="import" onPress={() => tell($, 'chief：导入现在在做的事', t().things.import)}>{t().things.import}</Button>)}
         </Box>
       ))}
-      {s !== null && usageBox(ui, s.hubUsage)}
+      {s !== null && usageBox(ui, s.hubUsage, s.usage)}
       {st.said !== '' && <Text size="footnote" color="error" wrap="wrap">{w.lastFailed(st.said)}</Text>}
       {buttons(button('setup-recheck', st.busy === 'check' ? w.checking : w.recheck, !busy, () => void recheck($), false))}
     </Box>

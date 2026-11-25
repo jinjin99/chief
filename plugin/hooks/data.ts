@@ -4,7 +4,7 @@ import type { EngineInterface as Engine } from 'claude-code'
 
 import { localeOf } from '../engine/src/shared/i18n'
 import { defaultHomeOf, layoutOf, topOf, type Layout } from '../engine/src/shared/paths'
-import type { AskRow, DecisionRow, HubUsage, PolicyFile, RefsFile, ReplyRow, Reviews, Snapshot, ThingRow, UndoRow } from '../types'
+import type { AskRow, DecisionRow, HubUsage, PolicyFile, RefsFile, ReplyRow, Reviews, Snapshot, ThingRow, UndoRow, Usage } from '../types'
 import { setLocale } from './i18n'
 
 // 面板的状态都在 PluginState['chief'] 里（types/index.d.ts）；引擎要求每个文件用到哪份就在本文件里声明哪份。
@@ -58,7 +58,7 @@ async function readLines<T>($: Engine, path: string): Promise<T[]> {
 
 export async function refresh($: Engine) {
   const f = await chiefFiles($)
-  const [alive, engine, state, dispatch, things, replies, decisions, reviews, policy, sources, activity, evals, people, hubUsage, undo, settings, refs] = await Promise.all([
+  const [alive, engine, state, dispatch, things, replies, decisions, reviews, policy, sources, activity, evals, people, hubUsage, usage, undo, settings, refs] = await Promise.all([
     readJson<{ at?: string; stopped?: boolean }>($, f.alive, {}),
     readJson<{ at?: string; health?: Snapshot['health'] }>($, f.engineAlive, {}),
     readJson<{ nextId?: number }>($, f.state, {}),
@@ -73,6 +73,7 @@ export async function refresh($: Engine) {
     readJson<Snapshot['evals']>($, f.evals, { cases: [], runs: [] }),
     readJson<Record<string, string>>($, f.people, {}),
     readJson<HubUsage>($, f.hubUsage, { days: {} }),
+    readJson<Usage>($, f.usage, { days: {} }),
     readJson<{ items?: UndoRow[] }>($, f.undo, {}),
     // 界面语言（chief config set locale en）、稿子放多久算久：只看这两项，别的设置是引擎的。
     readJson<{ locale?: unknown; staleDraftHours?: unknown }>($, f.config, {}),
@@ -107,6 +108,7 @@ export async function refresh($: Engine) {
     activity: Object.fromEntries(Object.entries(activity).filter(([k]) => k !== '_hub')),
     people,
     hubUsage,
+    usage,
     keyAlerts,
     undo: [...(undo.items ?? [])].reverse(),
     locale,

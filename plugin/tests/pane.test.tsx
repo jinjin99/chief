@@ -34,8 +34,12 @@ const FILES: Record<string, string> = {
   '/Users/me/chief/data/alive.json': JSON.stringify({ at: now }),
   '/Users/me/chief/data/engine.json': JSON.stringify({ at: now, health: { slack: { ok: true, at: now, fails: 0 }, github: { ok: false, at: now, fails: 1, error: 'gh 出错了：check your internet connection' } } }),
   '/Users/me/chief/data/state.json': JSON.stringify({ nextId: 11 }),
+  '/Users/me/chief/data/usage.json': JSON.stringify({
+    fitted: false,
+    days: { [dayOf(Date.now() - 86_400_000)]: { share: 0.3, accountFive: 10, accountWeek: 3, five: 3.2, week: 0.9 }, [dayOf(Date.now())]: { share: 0.21, accountFive: 60, accountWeek: 12, five: 12.34, week: 2.5 } },
+  }),
   '/Users/me/chief/data/hub-usage.json': JSON.stringify({
-    days: { [dayOf(Date.now() - 86_400_000)]: { calls: 40, weight: 1, five: 3.2, week: 0.9, measured: { weight: 1, five: 3.2, week: 0.9 } }, [dayOf(Date.now())]: { calls: 120, weight: 1, five: 12.34, week: 2.5, measured: { weight: 1, five: 12, week: 2.4 } } },
+    days: { [dayOf(Date.now() - 86_400_000)]: { calls: 40, weight: 1 }, [dayOf(Date.now())]: { calls: 120, weight: 1 } },
     now: { at: now, context: 596_000, window: 1_000_000, five: 61.5, week: 33, fiveReset: '2026-11-23T13:00:00Z', weekReset: '2026-11-27T02:00:00Z' },
   }),
   '/Users/me/chief/data/dispatch.json': JSON.stringify({ 1: {}, 2: {}, 3: {}, 4: {}, 5: {}, 6: {}, 7: {}, 8: {} }),
@@ -292,8 +296,8 @@ test('面板：主会话状态、要你定、待发出；按钮各做各的', as
   // 导入挪到了设置；主会话用掉的额度也在这。
   await ui.press({ key: 'import' })
   expect(prompts.at(-1)).toBe('chief：导入现在在做的事')
-  await want(ui, { type: 'Text', text: /今天：5 小时额度约 12\.3 个点 · 每周额度约 2\.5 个点 · 调了 120 次模型/ })
-  await want(ui, { type: 'Text', text: new RegExp(`${dayOf(Date.now() - 86_400_000).slice(5)}：5 小时额度约 3\\.2 个点`) })
+  await want(ui, { type: 'Text', text: /今天：约占这台电脑上用量的 21% · 5 小时额度约 12\.3 个点 · 每周额度约 2\.5 个点 · 调了 120 次模型/ })
+  await want(ui, { type: 'Text', text: new RegExp(`${dayOf(Date.now() - 86_400_000).slice(5)}：约占这台电脑上用量的 30% · 5 小时额度约 3\\.2 个点`) })
   await want(ui, { type: 'Text', text: /5 小时已用 61\.5%.*每周已用 33%/ })
   await want(ui, { type: 'Text', text: /主会话上下文 60 万 token：太长了/ })
   await ui.unmount()
@@ -877,27 +881,21 @@ test('问题拆成背景和要你定的：从第一个问号往前找最后一�
   expect(splitAsk('Joe 问能不能本周上线')).toEqual({ context: '', ask: 'Joe 问能不能本周上线' })
 })
 
-test('主会话额度：挨得近的两次读数，涨多少记多少；隔得久的按量到的平均速度估；窗口重置了只算重置后的', () => {
+test('主会话额度：每次调用记次数和份量；账号读数变了才记一个', () => {
   const u = (read: number, out = 0) => ({ input_tokens: 0, output_tokens: out, cache_read_input_tokens: read, cache_creation_input_tokens: 0 })
   const t0 = new Date(2026, 10, 23, 10, 0, 0).getTime()
   const at = (ms: number, five: number | null, week: number | null) => ({ at: ms, five, week, context: 500_000, window: 1_000_000 })
-  // 第一次：没有上一次读数，没量到过，记 0。
-  let f = addCall({ days: {} }, null, at(t0, 10, 30), u(400_000))
-  expect(f.days[dayOf(t0)]).toMatchObject({ calls: 1, five: 0, week: 0 })
-  // 30 秒后又调一次：5 小时涨 0.4、每周涨 0.1，记进去，也算量到的。
-  f = addCall(f, { at: t0, five: 10, week: 30 }, at(t0 + 30_000, 10.4, 30.1), u(400_000))
-  const d = f.days[dayOf(t0)]!
-  expect(Math.round(d.five * 1000) / 1000).toBe(0.4)
-  expect(Math.round(d.week * 1000) / 1000).toBe(0.1)
-  expect(d.measured.weight).toBe(20_000)
-  // 闲了一小时（别的会话把读数推高了）：不按差值记，按每份 token 的平均速度估：同样的份量估 0.4。
-  f = addCall(f, { at: t0 + 30_000, five: 10.4, week: 30.1 }, at(t0 + 3_600_000, 25, 33), u(400_000))
-  expect(Math.round(f.days[dayOf(t0)]!.five * 1000) / 1000).toBe(0.8)
-  expect(f.days[dayOf(t0)]!.calls).toBe(3)
-  // 5 小时窗口重置了：读数变小，只算重置后的这点。
-  f = addCall(f, { at: t0 + 3_600_000, five: 25, week: 33 }, at(t0 + 3_620_000, 0.3, 33.1), u(400_000))
-  expect(Math.round(f.days[dayOf(t0)]!.five * 1000) / 1000).toBe(1.1)
-  expect(f.now).toMatchObject({ context: 500_000, five: 0.3, week: 33.1 })
+  let f = addCall({ days: {} }, at(t0, 10, 30), u(400_000))
+  expect(f.days[dayOf(t0)]).toEqual({ calls: 1, weight: 8000 })
+  expect(f.readings).toEqual([{ at: t0, five: 10, week: 30 }])
+  // 读数没变：不多记一个读数，次数照加。
+  f = addCall(f, at(t0 + 30_000, 10, 30), u(0, 100))
+  expect(f.days[dayOf(t0)]).toEqual({ calls: 2, weight: 8500 })
+  expect(f.readings).toHaveLength(1)
+  // 变了：记上。两周前的读数清掉。
+  f = addCall({ ...f, readings: [{ at: t0 - 15 * 86_400_000, five: 1, week: 1 }, ...f.readings!] }, at(t0 + 60_000, 11, 30), u(0))
+  expect(f.readings!.map(r => r.five)).toEqual([10, 11])
+  expect(f.now).toMatchObject({ context: 500_000, five: 11, week: 30 })
 })
 
 test('认出主会话：挂的是 chief events --follow 的 Monitor', () => {

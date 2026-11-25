@@ -45,6 +45,9 @@ const DATA = {
   corrupt: "corrupt.json",
   // 主会话用掉的额度（面板的 hooks/usage.ts 记）。
   hubUsage: "hub-usage.json",
+  // 主会话占本机所有会话用量的份额、分到它头上的额度（引擎的 usage.ts 算），和读会话记录读到哪了。
+  usage: "usage.json",
+  usageScan: "usage-scan.json",
   // 免打扰时没弹的通知（见 quiet.ts）：免打扰一结束合成一条弹出来，也进下一份汇总。
   held: "held.json",
   // 能撤回的操作：不做了、只记下 / 忽略、跳过积下的（见 undo.ts）。

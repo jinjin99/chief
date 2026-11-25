@@ -144,7 +144,11 @@ export function files(lang: Lang): Record<string, string> {
   const usageDays = Object.fromEntries(Array.from({ length: 5 }, (_, i) => {
     const d = new Date(today.getTime() - i * DAY)
     const five = [3.1, 4.6, 2.2, 5.0, 3.8][i]!
-    return [dayKey(d), { calls: [212, 340, 160, 380, 290][i]!, weight: 1, five, week: five / 8, measured: { weight: 1, five, week: five / 8 } }]
+    return [dayKey(d), { calls: [212, 340, 160, 380, 290][i]!, weight: 1, five, week: five / 8 }]
+  }))
+  const shareDays = Object.fromEntries(Object.entries(usageDays).map(([day, d], i) => {
+    const share = [0.18, 0.21, 0.15, 0.24, 0.2][i]!
+    return [day, { share, accountFive: d.five / share, accountWeek: d.week / share, five: d.five, week: d.week }]
   }))
 
   const json = (x: unknown) => JSON.stringify(x)
@@ -167,7 +171,8 @@ export function files(lang: Lang): Record<string, string> {
       _hub: { permissionMode: 'default' },
     }),
     'data/people.json': json({ U0DEMOLEO: 'Leo' }),
-    'data/hub-usage.json': json({ days: usageDays, now: { at: ago(MIN), context: 96_000, window: 1_000_000, five: 21, week: 9, fiveReset: new Date(now + 3 * HOUR).toISOString(), weekReset: new Date(now + 4 * DAY).toISOString() } }),
+    'data/usage.json': json({ fitted: false, days: shareDays }),
+    'data/hub-usage.json': json({ days: Object.fromEntries(Object.entries(usageDays).map(([day, d]) => [day, { calls: d.calls, weight: d.weight }])), now: { at: ago(MIN), context: 96_000, window: 1_000_000, five: 21, week: 9, fiveReset: new Date(now + 3 * HOUR).toISOString(), weekReset: new Date(now + 4 * DAY).toISOString() } }),
     'data/undo.json': json({ nextId: 10, items: [
       { id: 2, at: ago(HOUR), kind: 'mark', label: L('Ignored: #random lunch order', '忽略：#random 午饭截单'), events: [{ id: 99 }] },
       { id: 3, at: ago(9 * MIN), kind: 'mark', label: L('Noted: #deploys v2.3.1 is out', '只记下：#deploys v2.3.1 发出去了'), events: [{ id: 109 }] },

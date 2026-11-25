@@ -24,6 +24,7 @@
 //                                      --key 记这件事的键，--import 标成导入的；find 按键找事情
 //   chief thing snooze <T> --until <时间> | wake <T>   稍后再说：到点引擎叫醒它、交给主会话；时间写 2h、1d、tomorrow 09:00、明天9点、下周一、ISO
 //   chief undo [--list] [号]           撤回最近做的：不做了、只记下 / 忽略、跳过积下的（撤回的消息重新交给主会话）
+//   chief usage  读一遍本机会话记录、重算主会话用掉的额度（引擎每 10 分钟自己算），打印结果（JSON）
 //   chief search <字> [--limit N] [--kind thing|ask|reply|event|decision]  在现在的数据和归档里找以前的事，一行一条 JSON
 //   chief test [--from 名字] [--where 位置] [--why dm|mention|thread]  造一条测试消息（标准输入给内容），回复不会真的发出去
 //   chief eval add|from-event|list|remove|run|report  演练：拿例子测主会话会怎么办（不真的办），对结果
@@ -58,6 +59,7 @@ import { ask, board, thing } from "./commands/things";
 import { triage } from "./commands/triage";
 import { undoCmd } from "./commands/undo";
 import { migrateAll } from "./migrate";
+import { refreshUsage } from "./usage";
 import { ensureHome } from "./store";
 
 // 命令 → 做什么。各个命令的实现在 commands/ 里，按用途分文件；读参数、标准输入的小工具在 args.ts。
@@ -68,6 +70,10 @@ const COMMANDS: Readonly<Record<string, (args: string[]) => Promise<void> | void
   export: (args) => exportCmd(args),
   quiet: () => quiet(),
   digest: (args) => digest(args),
+  usage: async () => {
+    const out = await refreshUsage();
+    process.stdout.write(`${JSON.stringify(out ?? { busy: true }, null, 2)}\n`);
+  },
   status: () => status(),
   logs: () => logs(),
   config: (args) => configCmd(args),
@@ -107,7 +113,7 @@ async function main(argv: string[]): Promise<void> {
   // 旧格式的数据文件先升到现在的格式（见 migrate.ts）。
   migrateAll();
   if (cmd === undefined || !Object.hasOwn(COMMANDS, cmd)) {
-    fail("chief run|install|uninstall|export|status|logs|config|quiet|digest|connect|disconnect|events|show|cursor|hub|engine|route|reply|mark|board|thing|ask|rules|review|import|test|eval|slack|undo|search|triage");
+    fail("chief run|install|uninstall|export|status|logs|config|quiet|digest|usage|connect|disconnect|events|show|cursor|hub|engine|route|reply|mark|board|thing|ask|rules|review|import|test|eval|slack|undo|search|triage");
   }
   return COMMANDS[cmd]!(args);
 }

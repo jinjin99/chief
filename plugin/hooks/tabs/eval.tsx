@@ -2,7 +2,7 @@
 import type { EngineInterface as Engine } from 'claude-code'
 
 import { expectOf } from '../../engine/src/shared/rules'
-import type { HubUsage, Snapshot } from '../../types'
+import type { HubUsage, Snapshot, Usage } from '../../types'
 import { removeCase, runEvals } from '../actions'
 import { L, t } from '../i18n'
 import { ago, type Els } from '../ui'
@@ -21,11 +21,12 @@ function resetAt(iso: string | undefined, withDay: boolean): string {
   return t().eval.resets(`${withDay ? t().eval.weekday[d.getDay()] : ''}${hm}`)
 }
 
-// 主会话用掉的订阅额度（hooks/usage.ts 记的）：今天、最近几天、账号现在的两个窗口、上下文多长。
-export function usageBox(ui: Els, u: HubUsage) {
+// 主会话用掉的订阅额度：份额和分到的点数引擎算（usage.json），调了几次模型插件记（hub-usage.json）。
+// 今天、最近几天、账号现在的两个窗口、上下文多长。
+export function usageBox(ui: Els, u: HubUsage, usage: Usage) {
   const { Box, Text } = ui
   const w = t().eval
-  const days = Object.entries(u.days).sort(([a], [b]) => b.localeCompare(a))
+  const days = [...new Set([...Object.keys(u.days), ...Object.keys(usage.days)])].sort((a, b) => b.localeCompare(a))
   const now = u.now
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="inactive" paddingX="md" paddingY="sm" gap="xs" marginTop="sm">
@@ -34,11 +35,17 @@ export function usageBox(ui: Els, u: HubUsage) {
         ? <Text dimColor wrap="wrap">{w.usageNone}</Text>
         : (
           <Box flexDirection="column" gap="xs">
-            {days.slice(0, 7).map(([day, d], i) => (
-              <Text key={`ud-${day}`} wrap="wrap" dimColor={i > 0}>
-                {w.usageDay(day === dayOf(Date.now()) ? w.today : day.slice(5), pts(d.five), pts(d.week), d.calls)}
-              </Text>
-            ))}
+            {days.slice(0, 7).map((day, i) => {
+              const d = usage.days[day]
+              const label = day === dayOf(Date.now()) ? w.today : day.slice(5)
+              return (
+                <Text key={`ud-${day}`} wrap="wrap" dimColor={i > 0}>
+                  {d && d.share !== null
+                    ? w.usageDay(label, Math.round(d.share * 100), pts(d.five), pts(d.week), u.days[day]?.calls ?? 0)
+                    : w.usageCalls(label, u.days[day]?.calls ?? 0)}
+                </Text>
+              )
+            })}
           </Box>
         )}
       {now && (now.five !== null || now.week !== null) && (
@@ -52,7 +59,7 @@ export function usageBox(ui: Els, u: HubUsage) {
           {now.context > LONG_CONTEXT ? w.contextLong : ''}
         </Text>
       )}
-      <Text size="caption" dimColor wrap="wrap">{w.usageHow}</Text>
+      <Text size="caption" dimColor wrap="wrap">{usage.fitted ? w.usageHowFitted : w.usageHow}</Text>
     </Box>
   )
 }
