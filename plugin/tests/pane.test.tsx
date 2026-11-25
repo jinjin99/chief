@@ -1076,3 +1076,43 @@ test('点发送：同一条连点两下，只发一次', async ($, on) => {
   finish(OK)
   await Promise.allSettled([first, second])
 })
+
+test('卡片上标出提到的 PR 合了、有冲突，稿子写了多久；发之前查到 PR 合了退回来的说清楚', async ($, on) => {
+  on('command.register', () => ({ value: { command: 'chief' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  memStore(on)
+  on('clock.every', () => ({ value: { cancel: () => {} } }))
+  const old = new Date(Date.now() - 20 * 3600_000).toISOString()
+  const pr = (state: string, conflict = false) => ({ state, conflict, head: 'abc', title: 'x', url: 'https://github.com/o/r/pull/1', mergedAt: state === 'merged' ? old : null, closedAt: state === 'open' ? null : old, checkedAt: now })
+  const refs = { prs: { 'o/r#44': pr('merged'), 'o/r#12': pr('open', true), 'o/r#9': pr('merged'), 'o/r#5': pr('open') }, links: { r7: ['o/r#44'], a3: ['o/r#12', 'o/r#5'], r8: ['o/r#9'] }, seen: {}, missing: {} }
+  const items = JSON.parse(FILES[REPLIES]!).items as Record<string, unknown>[]
+  items.push({ id: 8, event: 12, source: 'github', target: { ref: 'o/r#9' }, context: { who: 'Carol', where: 'o/r#9 修登录', said: '能再看下吗', url: 'https://github.com/o/r/pull/9' }, body: '改好了，再看一下', status: 'pending', at: old, prState: { ref: 'o/r#9', state: 'merged', at: now } })
+  on('fs.read', (_, e) => {
+    if (e.path === '/Users/me/chief/data/bin/chief') return { value: '#!/bin/sh' }
+    if (e.path === '/Users/me/chief/data/refs.json') return { value: JSON.stringify(refs) }
+    if (e.path === REPLIES) return { value: JSON.stringify({ items }) }
+    const text = FILES[e.path]
+    if (text === undefined) throw new Error('missing')
+    return { value: text }
+  })
+  on('process.run', (_, e) => {
+    if (e.argv[0] === '/usr/bin/env') return { value: { exitCode: 0, stdout: 'HOME=/Users/me\nPATH=/usr/bin\n', stderr: '' } }
+    return { value: { exitCode: 0, stdout: '', stderr: '' } }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.command.run({ command: 'chief', args: '' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  // approve 的 PR 已经合了、问题提到的 PR 有冲突：卡片上直接说；好好开着的不说。
+  await want(ui, { type: 'Text', text: /PR o\/r#44 已合并（20 小时前）/ })
+  await want(ui, { type: 'Text', text: /PR o\/r#12 有冲突，合不进去/ })
+  expect(await ui.find({ type: 'Text', text: /o\/r#5/ })).toBeFalsy()
+  // 发之前查到合了、退回来的：说清楚怎么回事，同一个 PR 不再重复说一遍「已合并」。
+  await want(ui, { type: 'Text', text: /发之前查到 PR o\/r#9 已合并，退回来了：还要发再点发送/ })
+  expect(await ui.find({ type: 'Text', text: /PR o\/r#9 已合并（/ })).toBeFalsy()
+  // 稿子写了多久。
+  await want(ui, { type: 'Text', text: /20 小时前写的/ })
+  await want(ui, { type: 'Text', text: /刚刚写的/ })
+  await ui.unmount()
+})

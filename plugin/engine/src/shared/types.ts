@@ -33,6 +33,8 @@ export interface ChiefEvent {
   // 演练（chief eval run 造的）：主会话只判断、说会怎么办，什么都不真的做。eval 是例子号。
   dryrun?: boolean;
   eval?: number;
+  // 引擎交的 ref.changed（PR 状态变了）、reply.stale（稿子放久了）：受影响的问题、回复、事情的编号，主会话照着撤问题、退稿（见 refs.ts）。
+  affected?: { asks: number[]; replies: number[]; things: number[] };
 }
 
 // ── 每条事件怎么处理的 ──
@@ -80,6 +82,8 @@ export interface Reply {
   confirmAsk?: { at: string };
   // 附的图（只有 Slack）：先发正文，再把图发到同一个地方。收下时已经复制进 drafts/images（见 images.ts）。
   images?: ReplyImage[];
+  // 发之前引擎查到这条要去的 PR 已经合了 / 关了，退回待发出等你看一眼（见 refs.ts 的 guardSend）。at 之后你再点发送就照发。
+  prState?: { ref: string; state: "merged" | "closed"; at: string };
   // 工作会话最初写的稿子（你改过才有，测评看你改了多少）。
   original?: string;
   // pending：等你确认；queued：你点了发送，sendAt 之前还能撤回；sending：引擎正在发；sent：发出去了；failed：没发出去（error）；
@@ -365,4 +369,33 @@ export interface Doctor {
   // 免打扰时段（null 没设）、每天汇总的时间（null 不发）：设置页那一行显示、改。
   quietHours: { start: string; end: string } | null;
   digest: { morning: string | null; evening: string | null };
+}
+
+// ── 提到的 PR 现在什么样（refs.json，引擎写，见 refs.ts）──
+
+export interface PrState {
+  // open：开着；merged：合了；closed：关了没合。
+  state: "open" | "merged" | "closed";
+  // GitHub 说合不进去（有冲突）。GitHub 还没算出来时按上一次的。
+  conflict: boolean;
+  // 最新一次提交：变了就是推了新提交。
+  head: string;
+  title: string;
+  url: string;
+  mergedAt: string | null;
+  closedAt: string | null;
+  checkedAt: string;
+}
+
+export interface RefsFile {
+  // 上一轮查完的时间。
+  checkedAt?: string;
+  // PR（owner/repo#号，小写）→ 现在的状态。
+  prs: Record<string, PrState>;
+  // 谁提到了哪些 PR：a<问题号>、r<回复号>、t<事情号> → PR。面板按它在卡片上标「已合并」「有冲突」。
+  links: Record<string, string[]>;
+  // 每个提到 PR 的上次看到的样子（「a3 o/r#12」→ 状态指纹），引擎比对用：变了才交给主会话。
+  seen: Record<string, string>;
+  // 查不到的（不是 PR、没权限、仓库没了）→ 什么时候查的：一天内不再查。
+  missing: Record<string, string>;
 }

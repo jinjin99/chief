@@ -49,6 +49,14 @@ const zh = {
     reply: (who: string) => `回 ${who}`,
     state: { queued: '马上发出', sending: '正在发', sent: '已发出', dropped: '不发了', redo: '在重写', failed: '没发出去' } as Partial<Record<string, string>>,
   },
+  // 卡片上的问题、回复提到的 PR 不正常了（引擎每 10 分钟查一次），和稿子写了多久。
+  refs: {
+    merged: (pr: string, when: string) => `PR ${pr} 已合并（${when}）`,
+    closed: (pr: string, when: string) => `PR ${pr} 已关闭，没合并（${when}）`,
+    conflict: (pr: string) => `PR ${pr} 有冲突，合不进去`,
+    bounced: (pr: string, merged: boolean) => `发之前查到 PR ${pr} ${merged ? '已合并' : '已关闭'}，退回来了：还要发再点发送`,
+    written: (ago: string) => `${ago}写的`,
+  },
   annotate: {
     open: '💬 批注',
     close: '收起批注',
@@ -526,6 +534,13 @@ const en: Dict = {
     message: (to: string) => `message ${to}`,
     reply: (who: string) => `reply to ${who}`,
     state: { queued: 'sending shortly', sending: 'sending', sent: 'sent', dropped: 'dropped', redo: 'being rewritten', failed: 'failed to send' },
+  },
+  refs: {
+    merged: (pr: string, when: string) => `PR ${pr} is merged (${when})`,
+    closed: (pr: string, when: string) => `PR ${pr} was closed without merging (${when})`,
+    conflict: (pr: string) => `PR ${pr} has conflicts and can't be merged`,
+    bounced: (pr: string, merged: boolean) => `PR ${pr} was ${merged ? 'merged' : 'closed'} when it was about to go out, so it came back: send again if you still want it`,
+    written: (ago: string) => `written ${ago}`,
   },
   annotate: {
     open: '💬 Note',

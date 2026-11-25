@@ -12,6 +12,8 @@
 //   items.jira         每次最多拉几张 Jira 单                                     默认 50    1–200
 //   slackCatchUpHours  Slack 连上以后补收最近几小时的私信、群聊                   默认 48    0–168
 //   logMaxMB           engine.log 超过多少 MB 就换一个（留 .1 .2 两份旧的）        默认 10    1–500
+//   refCheckMinutes    每隔几分钟查一次开着的问题、待发出的回复提到的 PR 变没变   默认 10    2–120
+//   staleDraftHours    待发出的回复放了几小时还没发，交给主会话核一遍            默认 12    1–168
 //   locale             面板、通知、主会话跟你说话的语言："zh" | "en"（见 messages.ts、shared/i18n.ts） 默认 "zh"
 //   quietHours         免打扰时段：{"start":"22:00","end":"08:00"} 或 null         默认 null
 //   digest             每天汇总：{"morning":"HH:MM" 或 null, "evening":"HH:MM" 或 null} 默认都是 null
@@ -30,6 +32,8 @@ export interface Config {
   items: { github: number; jira: number };
   slackCatchUpHours: number;
   logMaxMB: number;
+  refCheckMinutes: number;
+  staleDraftHours: number;
   locale: "zh" | "en";
   quietHours: { start: string; end: string } | null;
   digest: { morning: string | null; evening: string | null };
@@ -38,7 +42,7 @@ export interface Config {
 export function defaultConfig(): Config {
   return {
     pollMinutes: 5, firstLookbackHours: 24, missedMinutes: 10, hubDownMinutes: 5, nagMinutes: 30, keepDays: 7, undoSeconds: 5,
-    items: { github: 50, jira: 50 }, slackCatchUpHours: 48, logMaxMB: 10,
+    items: { github: 50, jira: 50 }, slackCatchUpHours: 48, logMaxMB: 10, refCheckMinutes: 10, staleDraftHours: 12,
     locale: "zh", quietHours: null, digest: { morning: null, evening: null },
   };
 }
@@ -47,6 +51,7 @@ export function defaultConfig(): Config {
 const RANGES: Record<string, [number, number]> = {
   pollMinutes: [1, 120], firstLookbackHours: [1, 720], missedMinutes: [1, 1440], hubDownMinutes: [1, 1440], nagMinutes: [5, 1440],
   keepDays: [1, 365], undoSeconds: [0, 60], "items.github": [1, 100], "items.jira": [1, 200], slackCatchUpHours: [0, 168], logMaxMB: [1, 500],
+  refCheckMinutes: [2, 120], staleDraftHours: [1, 168],
 };
 
 // chief config set 认得的键。

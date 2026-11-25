@@ -10,6 +10,7 @@ Jira ───────┤                                                   
 Notion ─────┤                                                              │
 会话动静 ────┤ activity.ts  读 App 的会话记录：会话说了新话、停在问你的框上    │
             │ archive.ts   办完 7 天的搬进 data/archive/                    │
+            │ refs.ts      问题、稿子提到的 PR 变了 / 稿子放久了，交给主会话 │
             │ 发送         replies.json 里 queued 的、过了 5 秒撤回期的回复   │
             └──────────────────────────────────────────────────────────────┘
                                    │ chief events --follow
@@ -38,6 +39,7 @@ Notion ─────┤                                                       
 - `shared/`：引擎和面板共用的纯 TypeScript（不 import Node 的东西）：来源名单和场景（`sources.ts`）、数据的类型（`types.ts`）、规矩里的名字和默认值、回复放哪（`rules.ts`）、文件路径（`paths.ts`）、界面语言和两种语言的名字（`i18n.ts`）。面板直接 import 这几个文件。界面文字的字典：面板在 `hooks/i18n.ts`，引擎的通知在 `src/messages.ts`，语言看 `config.json` 的 `locale`。
 - `store.ts`：数据文件的读写（带锁、先写临时文件再改名），路径按 `shared/paths.ts` 算。
 - `keys.ts`：从文字里认出「是哪件事」的键（PR 地址、工单号、Notion 页面），同一件事在不同来源里出现时靠它归到同一个会话。
+- `refs.ts`：外面的东西变了就提醒。开着的问题、待发出的回复、进行中的事情里提到的 GitHub PR，每 10 分钟用本机的 gh 批量查一次（GraphQL，只读），合了、关了、有冲突、推了新提交就交一条 `ref.changed`（带上受影响的问题、回复、事情）；待发出的回复放了半天还没发交一条 `reply.stale`；发到 GitHub 之前再查一次那个 PR，approve 不开着的 PR 不发，往合了、关了的 PR 上评论退回待发出。结果写进 `refs.json`，面板拿它在卡片上标「已合并」「有冲突」。
 - `quiet.ts`、`shared/schedule.ts`：免打扰（时段里引擎的通知先攒着，要紧的照弹）和每天汇总（到点交一条 `digest` 事件，主会话用 `chief digest` 拿材料）怎么算。
 - `secrets.ts`：macOS 钥匙串。`launchd.ts`：装卸 LaunchAgent。`images.ts`：回复附图。
 
@@ -83,6 +85,7 @@ Notion ─────┤                                                       
 | `data/routes.json` | `chief route` | 事情的键 → 会话 |
 | `data/activity.json` | 引擎 | 工作会话的最近动静 |
 | `data/undo.json` | `chief thing`、`chief mark`、`chief undo` | 最近能撤回的操作（不做了、只记下 / 忽略、跳过积下的）和撤回要用的原样，留最近 50 笔 |
+| `data/refs.json` | 引擎 | 问题、回复、事情提到的 PR 现在什么样，和每条上次看到的样子（比出变了没有） |
 | `data/archive/` | 引擎 | 办完 7 天的旧记录，按月一个文件 |
 | `data/logs/` | 引擎 | 日志（不写密钥和消息原文） |
 | `data/held.json` | 引擎 | 免打扰时没弹的通知（免打扰一过合成一条弹，也进汇总） |

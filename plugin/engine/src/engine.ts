@@ -11,6 +11,7 @@ import { sendCheck } from "./gate";
 import { rotateLog } from "./logfile";
 import { msg } from "./messages";
 import { holdIfQuiet, takeHeld } from "./quiet";
+import { RefWatch, applyStop, ghGql, type Gql } from "./refs";
 import { scrubTokens } from "./scrub";
 import { wakeDue } from "./snooze";
 import { KeychainStore, type SecretStore } from "./secrets";
@@ -235,6 +236,8 @@ type SendResult = { url: string | null; warning?: string };
 export interface EngineDeps {
   send?: (r: Reply) => Promise<SendResult>;
   notify?: (title: string, body: string) => void;
+  // 查 PR 状态（见 refs.ts）；不给就用本机的 gh。GitHub 来源没开时都不查。
+  gql?: Gql;
 }
 
 export type { SourceHealth };
@@ -255,6 +258,12 @@ export class Engine {
   private healthTimer: NodeJS.Timeout | null = null;
   private archiveTimer: NodeJS.Timeout | null = null;
   private wakeTimer: NodeJS.Timeout | null = null;
+  // 开着的问题、待发出的回复、进行中的事情提到的 PR 变没变，稿子放久了没有（见 refs.ts）。
+  private readonly refs = new RefWatch({
+    gql: () => (this.enabled.github ? this.deps.gql ?? ghGql() : null),
+    emit: (e, dedupe) => this.emit(e, dedupe),
+    log,
+  });
   // 每个来源最近一次收 / 拉的结果，跟心跳一起写进 engine.json，面板拿它把连不上的来源标红。
   private readonly health: Record<string, SourceHealth> = {};
   private readonly startedAt = Date.now();
@@ -410,6 +419,13 @@ export class Engine {
     } catch (error) {
       log(`对账没成：${error instanceof Error ? error.message : String(error)}`);
     }
+    this.refTick().catch((error: unknown) => log(`看 PR 和稿子没成：${error instanceof Error ? error.message : String(error)}`));
+  }
+
+  // 稿子放久了没有（每分钟看）、提到的 PR 变没变（每 refCheckMinutes 分钟查一轮）：变了交给主会话（见 refs.ts）。测试直接调。
+  async refTick(now = Date.now()): Promise<void> {
+    this.refs.staleDrafts(now);
+    await this.refs.tick(now, this.abort.signal);
   }
 
   // 每天汇总：到点了交一条 digest 事件给主会话，它用 chief digest 拿材料写给你。每个时段每天一次（记在 state.json 的 digest，重启不重复）。
@@ -558,6 +574,14 @@ export class Engine {
           if (!this.record(r.id, { status: "failed", error: bad })) log(`回复 ${r.id} 没核过，结果也没记上（下次引擎启动会标成要你看一眼）`);
           log(`回复 ${r.id} 发之前没核过，没发：${bad}`);
           notify(msg().replyBlockedTitle, `${r.context.who ?? r.context.where}${msg().colon}${bad}`);
+          continue;
+        }
+        // 发到 GitHub 的：现查一次 PR，合了、关了的不 approve，评论退回等你看一眼（见 refs.ts）。
+        const stop = await this.refs.beforeSend(r, Date.now(), this.abort.signal);
+        if (stop !== null) {
+          if (!applyStop(r.id, stop)) log(`回复 ${r.id} 拦下了，结果没记上（下次引擎启动会标成要你看一眼）`);
+          log(`回复 ${r.id} 发之前查到 PR 不开着了，没发：${stop.why}`);
+          notify(msg().replyBlockedTitle, `${r.context.who ?? r.context.where}${msg().colon}${stop.why}`);
           continue;
         }
         let out: SendResult;

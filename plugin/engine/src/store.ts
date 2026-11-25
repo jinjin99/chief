@@ -20,8 +20,9 @@
 //   reviews.json  你给主会话的判断标的对错（事件号 → 对 / 错和你说的应该怎样）。
 //   held.json     免打扰时没弹的通知（见 quiet.ts）。
 //   undo.json     最近能撤回的操作（不做了、只记下 / 忽略、跳过积下的）和撤回要用的原样（见 undo.ts）。
+//   refs.json     开着的问题、待发出的回复、进行中的事情提到的 PR 现在什么样，和每条上次看到的样子（引擎写，见 refs.ts）。
 // 几个进程（引擎、主会话的命令、面板的命令）会同时写的文件（replies、things、policy、dispatch、routes、reviews、hub、undo），都拿着 <文件>.lock 读改写。
-// 引擎只写 events.jsonl、state.json，外加拿着锁改 things.json（叫醒稍后再说的、归档）、replies.json（发送）；命令行（消息中心在用）也往 events.jsonl 追加（测试消息、撤回），拿着 state 的锁取号。
+// 引擎只写 events.jsonl、state.json、refs.json，外加拿着锁改 things.json（叫醒稍后再说的、归档）、replies.json（发送）；命令行（消息中心在用）也往 events.jsonl 追加（测试消息、撤回），拿着 state 的锁取号。
 import { appendFileSync, closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmdirSync, statSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";

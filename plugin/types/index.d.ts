@@ -21,6 +21,8 @@ export type ReplyRow = {
   confirmAsk?: { at: string }
   // 附的图（只有 Slack）：正文发完发到同一个地方。file 是复制进 drafts/images 后的路径。
   images?: { file: string; name: string; bytes: number; mime: string }[]
+  // 发之前引擎查到 PR 已经合了 / 关了，退回来等你看一眼（at 之后再点发送就照发）。
+  prState?: { ref: string; state: 'merged' | 'closed'; at: string }
   original?: string
   status: 'pending' | 'queued' | 'sending' | 'sent' | 'failed' | 'dropped' | 'redo'
   by?: 'you' | 'policy'
@@ -126,6 +128,11 @@ export type SearchHit = {
 
 export type Health = { ok: boolean; at: string; fails: number; error?: string }
 
+// 提到的 PR 现在什么样（refs.json，引擎每 10 分钟查一次）。
+export type PrRow = { state: 'open' | 'merged' | 'closed'; conflict: boolean; head: string; title: string; url: string; mergedAt: string | null; closedAt: string | null; checkedAt: string }
+// prs：PR（owner/repo#号）→ 状态；links：a<问题号> / r<回复号> / t<事情号> → 它提到的 PR。
+export type RefsFile = { checkedAt?: string; prs: Record<string, PrRow>; links: Record<string, string[]>; seen: Record<string, string>; missing: Record<string, string> }
+
 export type EvalCaseRow = { id: number; text: string; from: string; expect: 'dispatch' | 'note' | 'ignore' | 'ask'; note?: string }
 export type EvalRunRow = { id: number; at: string; events: Record<string, number> }
 
@@ -164,6 +171,10 @@ export type Snapshot = {
   undo: UndoRow[]
   // 插件更新过、主会话还没重读规则（插件自己的存储里记着上次重读时的插件版本）。
   reread: boolean
+  // 卡片上的问题、回复提到的 PR 现在什么样（refs.json）。
+  refs: { prs: Record<string, PrRow>; links: Record<string, string[]> }
+  // 待发出的稿子放了几小时算久（config.json 的 staleDraftHours，默认 12）：卡片上写了多久的那行变黄。
+  staleDraftHours: number
 }
 
 // 主会话一天用掉的额度（hooks/usage.ts 记）：five / week 是 5 小时、每周窗口涨了几个百分点（量到的加估的），
