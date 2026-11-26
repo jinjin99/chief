@@ -9,7 +9,6 @@ import type { EngineInterface as Engine, Register } from 'claude-code'
 
 import { refresh, chiefDir } from './data'
 import { confirmAsked, ensureKey, noteUserSaid } from './confirm'
-import { hubInstructions, startCompactWatch, turnActivity } from './compact'
 import { startTriage } from './triage'
 import { isHub, isHubMonitor, markHub, recordCall } from './usage'
 import { autoUpdate, checkSetup, missing, readSetup, setupTab } from './setup'
@@ -87,7 +86,6 @@ export const register: Register = on => {
     // 这个会话是主会话（插件重新加载、会话恢复）：接着分诊。
     if (await isHub($).catch(() => false)) {
       startTriage($)
-      startCompactWatch($)
     }
     return next(e)
   })
@@ -116,33 +114,15 @@ export const register: Register = on => {
     if (isHubMonitor(typeof command === 'string' ? command : undefined)) {
       await markHub($).catch(() => {})
       startTriage($)
-      startCompactWatch($)
     }
     return next(e)
   })
 
   // 主会话（不算它派出的子代理）每调完一次模型：读额度，记一笔。
   on('turn.step', async function* ($, e, next) {
-    if (e.agentId === undefined) turnActivity()
     const res = yield* next(e)
     if (e.agentId === undefined && res.usage && await isHub($).catch(() => false)) await recordCall($, res.usage).catch(() => {})
     return res
-  })
-
-  // 主会话最后一次有动静：闲了一会儿插件才替它压缩（见 compact.ts）。只看主线程，不看子代理。
-  on('turn.start', async ($, e, next) => {
-    if (e.agentId === undefined) turnActivity()
-    return next(e)
-  })
-  on('turn.complete', async ($, e, next) => {
-    if ((e as { agentId?: string }).agentId === undefined) turnActivity()
-    return next(e)
-  })
-
-  // 主会话压缩时（插件、自动、你手敲的都算）：告诉总结器哪些在 chief 的文件里、不用留。
-  on('session.compact', async ($, e, next) => {
-    if (e.agentId !== undefined || !(await isHub($).catch(() => false))) return next(e)
-    return next({ ...e, instructions: hubInstructions(e.instructions) })
   })
 
   on('command.run', { command: 'chief' }, async ($, e) => {
