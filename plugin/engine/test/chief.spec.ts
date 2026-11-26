@@ -786,6 +786,9 @@ describe("回复写法", () => {
   it("默认几条写法，能加能删", () => {
     const h = home();
     expect(chief(h, "rules")).toContain("像同事在 Slack 上聊天");
+    const defaults = JSON.parse(chief(h, "rules", "json")).style as string[];
+    expect(defaults).toHaveLength(7);
+    expect(defaults.at(-1)).toMatch(/^替我发到 Slack 的话：代码、分支、命令、文件路径、字段名用行内代码；多行命令或代码用代码块；PR、工单、分支、文档写成能点的链接/);
     execFileSync(process.execPath, ["--import", TSX, CLI, "rules", "style", "add"], { env: { ...process.env, CHIEF_HOME: h }, input: "不用「您」" });
     expect(JSON.parse(chief(h, "rules", "json")).style).toContain("不用「您」");
     execFileSync(process.execPath, ["--import", TSX, CLI, "rules", "style", "remove"], { env: { ...process.env, CHIEF_HOME: h }, input: "不用「您」" });

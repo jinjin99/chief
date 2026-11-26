@@ -353,6 +353,7 @@ export function defaultPolicy(): Policy {
       "整条一般不超过 6 行，每行一两句。细节、数据、推理过程放进 PR、文档或链接里；只留对方最关心的一两个数字。",
       "对方问什么答什么，没问的不展开。",
       "称呼和语气跟着对方：对方随意就随意，对方正式就正式。",
+      "替我发到 Slack 的话：代码、分支、命令、文件路径、字段名用行内代码；多行命令或代码用代码块；PR、工单、分支、文档写成能点的链接（[说明](链接)），不贴裸链接。",
     ],
     placement: { ...DEFAULT_PLACEMENT },
     custom: [{ id: 1, when: "Slack 里有人发 PR 链接，让我看一下 / 帮忙 approve", handle: "approve", reply: "auto", brief: "PR 已合并、已关闭、是我自己开的，就不 approve，只记下；CI 没过的先问我" }],
