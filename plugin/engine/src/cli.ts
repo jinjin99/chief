@@ -39,7 +39,7 @@
 //                                      ask-confirm 你在会话里说了发，等插件核对）、撤回、不发、让它重写
 //                                      edit-yours 你在面板上自己改的稿子（带钥匙，不按「不许写 chief 编号」拦）
 //   chief key set|check|reset          「以你的名义发」的钥匙：插件配，原文不落在这里；reset 要你在终端里敲 reset 确认，清、换都会弹通知、面板挂提醒
-//                                      new --to 可以是一条 Slack 消息的链接：回到那条帖子的 thread 里
+//                                      new --to 可以是一条 Slack 消息的链接：回到那条帖子的 thread 里；也可以是 GitHub PR、issue 的链接：在下面评论
 //   chief slack who <名字>             找 Slack 上的人，拿到 <@U…>（写进稿子才会真的提醒到人）
 //   chief archive                      把办完超过 7 天的事件、判断、事情、回复搬进 ~/chief/data/archive（引擎每天自己搬一次）
 // 从标准输入给的文字（理由、进展、问题、稿子）不经过命令行参数：里面会引用别人的原文，不能让 shell 当成命令。

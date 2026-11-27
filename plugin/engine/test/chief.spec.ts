@@ -550,6 +550,18 @@ describe("回到别人帖子的 thread", () => {
     expect(chiefFails(h, "reply", "new", "--to", "https://x.slack.com/nope", "--file", join(h, "drafts", "t.md"))).toContain("链接");
     expect(chiefFails(h, "reply", "new", "--to", "U0ABC", "--thread", "1795079290.188699", "--file", join(h, "drafts", "t.md"))).toContain("--thread");
   });
+
+  it("chief reply new --to <GitHub PR 链接>：在 PR 下面评论，规矩不能直接发", () => {
+    const h = home();
+    chief(h, "cursor");
+    writeFileSync(join(h, "drafts", "g.md"), "做好了，在第 4 层改的。");
+    const r = JSON.parse(chief(h, "reply", "new", "--to", "https://github.com/acme/web/pull/10834#issuecomment-1", "--file", join(h, "drafts", "g.md")));
+    expect(r).toMatchObject({ kind: "message", to: "acme/web#10834", policy: "ask" });
+    expect(JSON.parse(chief(h, "reply", "list"))[0]).toMatchObject({ source: "github", target: { ref: "acme/web#10834" }, context: { url: "https://github.com/acme/web/pull/10834" } });
+    expect(chiefFails(h, "reply", "queue", String(r.id), "--policy")).not.toBe("");
+    expect(chiefFails(h, "reply", "new", "--to", "https://github.com/acme/web/pull/1", "--thread", "1795079290.188699", "--file", join(h, "drafts", "g.md"))).toContain("--thread");
+    expect(chiefFails(h, "reply", "new", "--to", "https://github.com/acme/web/tree/main", "--file", join(h, "drafts", "g.md"))).toContain("链接");
+  });
 });
 
 describe("Slack 署名放在正文上方的小字里", () => {

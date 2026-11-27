@@ -135,10 +135,32 @@ export async function reply(args: string[]): Promise<void> {
     process.stdout.write(`${JSON.stringify({ id: r.id, kind: "approve", ref, policy: autoReason(r, pol, event) === null ? "ask" : "auto" })}\n`);
     return;
   }
-  // chief reply new --to <Slack 用户编号 U… / 邮箱 / 频道编号 C…> [--name 对方名字] [--thing T] --file <drafts 里的文件>：
+  // chief reply new --to <Slack 用户编号 U… / 邮箱 / 频道编号 C… / GitHub PR、issue 的链接> [--name 对方名字] [--thing T] --file <drafts 里的文件>：
   // 主动给人发一条新消息（不是回复谁）。放进待发出；你说了要发，再 queue。
   if (sub === "new") {
-    const raw = flag(args, "--to") ?? fail("要 --to <Slack 用户编号 U… / 邮箱 / 频道编号 C… / 一条消息的链接>");
+    const raw = flag(args, "--to") ?? fail("要 --to <Slack 用户编号 U… / 邮箱 / 频道编号 C… / 一条消息的链接 / GitHub PR、issue 的链接>");
+    // GitHub 的 PR、issue 链接：在下面发一条评论（比如你自己在 PR 上留的话，引擎不报成事件，没法 reply add）。
+    const gh = /^https:\/\/github\.com\/([\w.-]{1,100})\/([\w.-]{1,100})\/(pull|issues)\/(\d{1,9})(?:[/?#][^\s]*)?$/i.exec(raw);
+    if (gh) {
+      if (args.includes("--thread") || args.includes("--image")) fail("发到 GitHub 的不收 --thread、--image");
+      const ref = `${gh[1]}/${gh[2]}#${Number(gh[4])}`;
+      const name = oneLine(flag(args, "--name") ?? ref, 60);
+      const thingFlag = flag(args, "--thing");
+      const thingId = thingFlag === null ? null : num(thingFlag, "--thing ");
+      const body = draftText(flag(args, "--file") ?? fail("要 --file <drafts 里的文件>"));
+      plainOnly(body, "消息正文", { github: true });
+      const r = updateReplies((all) => {
+        const x: Reply = {
+          id: all.nextId++, kind: "message", event: 0, source: "github", target: { ref }, body, status: "pending", at: new Date().toISOString(),
+          context: { who: name, where: `在 ${ref} 下面评论`, said: "", url: `https://github.com/${gh[1]}/${gh[2]}/${gh[3]!.toLowerCase()}/${Number(gh[4])}` },
+          ...(thingId !== null ? { thing: thingId } : {}),
+        };
+        all.items.push(x);
+        return x;
+      });
+      process.stdout.write(`${JSON.stringify({ id: r.id, kind: "message", to: ref, policy: "ask" })}\n`);
+      return;
+    }
     // 给的是一条消息的链接：回到那条帖子的 thread 里（别人发的帖子也行）。
     const link = raw.startsWith("https://") ? parsePermalink(raw) ?? fail("--to 的链接要是 Slack 消息链接（https://….slack.com/archives/C…/p…）") : null;
     const to = link?.channel ?? raw;
