@@ -130,6 +130,10 @@ describe("chief triage", () => {
     const listed = JSON.parse(chief(h, null, "triage", "list"));
     expect(listed.items.map((x: { id: number; kind: string }) => [x.id, x.kind])).toEqual([[1, "message"], [2, "session"]]);
     expect(listed.items[1].thing).toMatchObject({ title: "导出报表" });
+    expect(listed.model).toBe("haiku");
+    chief(h, null, "config", "set", "triageModel", "sonnet");
+    expect(JSON.parse(chief(h, null, "triage", "list")).model).toBe("sonnet");
+    expect(chiefFails(h, "config", "set", "triageModel", "gpt")).toMatch(/triageModel 只能是/);
     expect(stream(h).map((e) => e.id)).toEqual([3]);
 
     chief(h, null, "triage", "claim", "1");

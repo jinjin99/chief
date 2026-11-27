@@ -163,6 +163,15 @@ function setDigest($: Engine, slot: 'morning' | 'evening', text: string) {
   return setConfig($, `digest.${slot}`, hm === '' ? 'null' : hm)
 }
 
+// 分诊：关掉，或换模型（换模型的同时打开）。两项都是引擎现读的，不用重启。
+function setTriage($: Engine, v: string) {
+  return step($, 'config', async () => {
+    if (v === 'off') return chief($, ['config', 'set', 'triage', 'false'])
+    const m = await chief($, ['config', 'set', 'triageModel', v])
+    return m.exitCode !== 0 ? m : chief($, ['config', 'set', 'triage', 'true'])
+  })
+}
+
 function recheck($: Engine) {
   return step($, 'check', async () => null)
 }
@@ -186,6 +195,9 @@ function openHubThere($: Engine, path: string) {
 const QUIET = ['21:00-08:00', '22:00-08:00', '23:00-08:00', '22:00-09:00', '23:00-09:00']
 const MORNING = ['07:30', '08:00', '08:30', '09:00', '09:30', '10:00']
 const EVENING = ['17:00', '17:30', '18:00', '18:30', '19:00', '20:00']
+
+// 分诊的模型：都走主会话的订阅；越往下越准、越费额度。
+const TRIAGE = ['haiku', 'sonnet', 'opus', 'off']
 
 // 语言选项：各用自己的语言写，看不懂当前语言的人也认得出。
 const LANGUAGES: { value: Locale; label: string }[] = [{ value: 'zh', label: '中文' }, { value: 'en', label: 'English' }]
@@ -382,6 +394,14 @@ export function setupTab($: Engine, ui: Els, st: Setup, s: Snapshot | null, logT
             ? w.quietOn(d.quietHours.start, d.quietHours.end)
             : w.quietOff)}
           {note(w.digest(d.digest?.morning ?? null, d.digest?.evening ?? null))}
+        </Box>
+      ), true)}
+      {d?.triage !== undefined && block('set-triage', null, w.triageTitle, (
+        <Box flexDirection="column" gap="xs">
+          {note(w.triageHelp)}
+          {'Select' in ui
+            ? select(ui, 'triage', d.triage, TRIAGE.map(v => ({ value: v, label: w.triageModel[v]! })), v => { if (!busy) void setTriage($, v) })
+            : buttons(...TRIAGE.map(v => button(`triage-${v}`, w.triageModel[v]!, !busy && v !== d.triage, () => void setTriage($, v), false)))}
         </Box>
       ), true)}
       {st.installed && block('set-language', null, w.languageTitle, (

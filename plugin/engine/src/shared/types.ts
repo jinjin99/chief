@@ -372,6 +372,8 @@ export interface Doctor {
   // 免打扰时段（null 没设）、每天汇总的时间（null 不发）：设置页那一行显示、改。
   quietHours: { start: string; end: string } | null;
   digest: { morning: string | null; evening: string | null };
+  // 分诊用的模型；off：关了分诊，事件都直接交给主会话。旧引擎没有这一项。
+  triage?: "haiku" | "sonnet" | "opus" | "off";
 }
 
 // ── 提到的 PR 现在什么样（refs.json，引擎写，见 refs.ts）──

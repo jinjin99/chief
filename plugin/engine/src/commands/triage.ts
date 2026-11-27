@@ -4,6 +4,7 @@
 //   wake <号>      这条要主会话处理，标准输入是理由（交给主会话时带上）。
 // 只记下的不在这里：插件照主会话的办法 chief thing update / chief mark … noted，记录、撤回都一样。
 import { fail, num, oneLine, stdinText } from "../args";
+import { liveConfig } from "../config";
 import { loadPolicy, loadReplies, loadThings, scenarioOf, SCENARIOS } from "../store";
 import { claim, heartbeat, pending, wake } from "../triage";
 
@@ -29,7 +30,7 @@ export async function triage(args: string[]): Promise<void> {
       };
     });
     const rules = { notes: policy.notes, custom: policy.custom.map((c) => ({ when: c.when, handle: c.handle, brief: c.brief ?? "" })) };
-    process.stdout.write(`${JSON.stringify({ rules, items })}\n`);
+    process.stdout.write(`${JSON.stringify({ model: liveConfig().triageModel, rules, items })}\n`);
     return;
   }
   if (sub === "claim") {

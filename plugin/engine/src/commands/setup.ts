@@ -257,6 +257,7 @@ export async function doctor(): Promise<void> {
     list: DESCRIPTORS.map((d) => ({ id: d.id, label: SOURCE_LABELS[d.id], setup: d.meta.setup.kind, ...sources[d.id]! })),
     quietHours: liveConfig().quietHours,
     digest: liveConfig().digest,
+    triage: liveConfig().triage ? liveConfig().triageModel : "off",
   };
   process.stdout.write(`${JSON.stringify(out)}\n`);
 }
