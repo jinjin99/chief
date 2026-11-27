@@ -1,1 +1,1 @@
-{ "name": "chief", "version": "0.4.1", "description": "Personal assistant for the Claude App: a hub session triages what needs you on Slack, GitHub and Jira, hands work to Claude sessions, and shows progress and replies in a panel", "types": "./types/index.d.ts" }
+{ "name": "chief", "version": "0.4.2", "description": "Personal assistant for the Claude App: a hub session triages what needs you on Slack, GitHub and Jira, hands work to Claude sessions, and shows progress and replies in a panel", "types": "./types/index.d.ts" }
